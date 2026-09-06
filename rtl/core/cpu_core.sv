@@ -377,17 +377,17 @@ module cpu_core (
     // Debug
     // ==============================
 
-    assign dbg_reg_we       = rf_we;
-    assign dbg_rd_addr      = rd_addr;
-    assign dbg_rd_data      = writeback_data;
+    // assign dbg_reg_we       = rf_we;
+    // assign dbg_rd_addr      = rd_addr;
+    // assign dbg_rd_data      = writeback_data;
 
-    assign dbg_rs1_data     = rs1_data;
-    assign dbg_rs2_data     = rs2_data;
+    // assign dbg_rs1_data     = rs1_data;
+    // assign dbg_rs2_data     = rs2_data;
 
-    assign dbg_imm          = imm;
+    // assign dbg_imm          = imm;
 
-    assign dbg_branch_taken = branch_taken;
+    // assign dbg_branch_taken = branch_taken;
 
-    assign dbg_illegal      = illegal;
+    // assign dbg_illegal      = illegal;
 
 endmodule

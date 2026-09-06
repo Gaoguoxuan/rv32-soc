@@ -46,8 +46,54 @@ ASM_DUMP := $(ASM_DIR)/rv32i_smoke.dump
 
 ASM_SIM := build/obj_asm/Vtb_asm
 
+# ============================================================
+# RISC-V toolchain
+# ============================================================
 
-.PHONY: all test build lint wave clean asm-test asm-dump
+RISCV_PREFIX := riscv64-unknown-elf-
+
+RISCV_GCC     := $(RISCV_PREFIX)gcc
+RISCV_OBJCOPY := $(RISCV_PREFIX)objcopy
+RISCV_OBJDUMP := $(RISCV_PREFIX)objdump
+
+
+# ============================================================
+# C smoke test
+# ============================================================
+
+C_DIR := build/c
+
+C_START := sw/baremetal/start.S
+C_SRC   := sw/baremetal/main.c
+C_LDS   := sw/baremetal/link.ld
+
+C_ELF  := $(C_DIR)/c_smoke.elf
+C_BIN  := $(C_DIR)/c_smoke.bin
+C_HEX  := $(C_DIR)/c_smoke.hex
+C_DUMP := $(C_DIR)/c_smoke.dump
+C_MAP  := $(C_DIR)/c_smoke.map
+
+C_SIM := build/obj_c/Vtb_c
+
+CFLAGS := \
+    -march=rv32i \
+    -mabi=ilp32 \
+    -O0 \
+    -g \
+    -ffreestanding \
+    -fno-builtin \
+    -fno-pic \
+    -msmall-data-limit=0 \
+    -nostdlib \
+    -nostartfiles
+
+LDFLAGS_C := \
+    -Wl,-T,$(C_LDS) \
+    -Wl,--no-relax \
+    -Wl,-Map,$(C_MAP)
+
+
+.PHONY: all test build lint wave clean asm-test asm-dump c-test c-dump
 
 $(ASM_ELF): $(ASM_SRC) $(ASM_LDS)
 >mkdir -p $(ASM_DIR)
@@ -98,6 +144,60 @@ $(ASM_SIM): $(RTL) tb/tb_asm.sv
 >    --top-module tb_asm \
 >    $(RTL) \
 >    tb/tb_asm.sv
+
+
+$(C_ELF): $(C_START) $(C_SRC) $(C_LDS)
+>mkdir -p $(C_DIR)
+>$(RISCV_GCC) \
+>    $(CFLAGS) \
+>    $(LDFLAGS_C) \
+>    -o $(C_ELF) \
+>    $(C_START) \
+>    $(C_SRC)
+
+
+$(C_BIN): $(C_ELF)
+>$(RISCV_OBJCOPY) \
+>    -O binary \
+>    $(C_ELF) \
+>    $(C_BIN)
+
+
+$(C_HEX): $(C_BIN) scripts/bin2hex.py
+>python3 scripts/bin2hex.py \
+>    $(C_BIN) \
+>    $(C_HEX)
+
+
+$(C_DUMP): $(C_ELF)
+>$(RISCV_OBJDUMP) \
+>    -d \
+>    -M no-aliases \
+>    $(C_ELF) \
+>    > $(C_DUMP)
+
+
+$(C_SIM): $(RTL) tb/tb_c.sv
+>mkdir -p build/obj_c
+>$(VERILATOR) \
+>    --binary \
+>    --timing \
+>    --trace \
+>    -Wall \
+>    -Wno-fatal \
+>    -Wno-PINMISSING \
+>    --Mdir build/obj_c \
+>    --top-module tb_c \
+>    $(RTL) \
+>    tb/tb_c.sv
+
+
+c-test: $(C_HEX) $(C_DUMP) $(C_SIM)
+>./$(C_SIM)
+
+
+c-dump: $(C_DUMP)
+>cat $(C_DUMP)
 
 
 asm-test: $(ASM_HEX) $(ASM_DUMP) $(ASM_SIM)
