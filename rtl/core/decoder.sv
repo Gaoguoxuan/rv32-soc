@@ -15,7 +15,7 @@ module decoder (
 
     output logic [1:0]  wb_sel,
 
-    output logic        branch,
+    output logic [2:0]  branch_type,
     output logic [1:0]  jump,
 
     output logic        illegal
@@ -28,6 +28,16 @@ module decoder (
     localparam logic [6:0] OPCODE_OP     = 7'b0110011;
 
     localparam logic [6:0] OPCODE_OP_IMM = 7'b0010011;
+
+    localparam logic [6:0] OPCODE_LOAD   = 7'b0000011;
+    localparam logic [6:0] OPCODE_STORE  = 7'b0100011;
+    localparam logic [6:0] OPCODE_BRANCH = 7'b1100011;
+
+    localparam logic [6:0] OPCODE_LUI    = 7'b0110111;
+    localparam logic [6:0] OPCODE_AUIPC  = 7'b0010111;
+
+    localparam logic [6:0] OPCODE_JAL    = 7'b1101111;
+    localparam logic [6:0] OPCODE_JALR   = 7'b1100111;
 
 
     // ========================================
@@ -74,6 +84,25 @@ module decoder (
     localparam logic [1:0] WB_MEM = 2'b01;
     localparam logic [1:0] WB_PC4 = 2'b10;
 
+    // ========================================
+    // Branch type
+    // ========================================
+
+    localparam logic [2:0] BR_NONE = 3'b000;
+    localparam logic [2:0] BR_BEQ  = 3'b001;
+    localparam logic [2:0] BR_BNE  = 3'b010;
+    localparam logic [2:0] BR_BLT  = 3'b011;
+    localparam logic [2:0] BR_BGE  = 3'b100;
+    localparam logic [2:0] BR_BLTU = 3'b101;
+    localparam logic [2:0] BR_BGEU = 3'b110;
+
+    // ========================================
+    // Jump type
+    // ========================================
+
+    localparam logic [1:0] JUMP_NONE = 2'b00;
+    localparam logic [1:0] JUMP_JAL  = 2'b01;
+    localparam logic [1:0] JUMP_JALR = 2'b10;
 
     always_comb begin
 
@@ -95,7 +124,7 @@ module decoder (
 
         wb_sel    = WB_ALU;
 
-        branch    = 1'b0;
+        branch_type = 3'b000;
         jump      = 2'b00;
 
         illegal   = 1'b1;
@@ -325,6 +354,126 @@ module decoder (
 
                     end
 
+                    default: begin
+                    end
+
+                endcase
+
+            end
+
+            // ==================================
+            // I-type LOAD
+            // ================================== 
+
+            OPCODE_LOAD: begin
+
+                // LW
+                if (instr[14:12] == 3'b010) begin
+
+                    reg_we    = 1'b1;
+
+                    op_a_sel  = OP_A_RS1;
+                    op_b_imm  = 1'b1;
+
+                    imm_sel   = IMM_I;
+
+                    alu_op    = ALU_ADD;
+
+                    mem_load  = 1'b1;
+
+                    wb_sel    = WB_MEM;
+
+                    illegal   = 1'b0;
+
+                end
+
+            end
+
+            // ==================================
+            // I-type JALR
+            // ================================== 
+
+            OPCODE_JALR: begin
+
+                if (instr[14:12] == 3'b000) begin
+
+                    reg_we   = 1'b1;
+
+                    imm_sel  = IMM_I;
+
+                    wb_sel   = WB_PC4;
+
+                    jump     = JUMP_JALR;
+
+                    illegal  = 1'b0;
+
+                end
+
+            end
+
+            // ==================================
+            // S-type
+            // ================================== 
+
+            OPCODE_STORE: begin
+
+                // SW
+                if (instr[14:12] == 3'b010) begin
+
+                    op_a_sel  = OP_A_RS1;
+                    op_b_imm  = 1'b1;
+
+                    imm_sel   = IMM_S;
+
+                    alu_op    = ALU_ADD;
+
+                    mem_store = 1'b1;
+
+                    illegal   = 1'b0;
+
+                end
+
+            end
+
+            // ==================================
+            // B-type
+            // ================================== 
+
+            OPCODE_BRANCH: begin
+
+                imm_sel = IMM_B;
+
+                case (instr[14:12])
+
+                    3'b000: begin
+                        branch_type = BR_BEQ;
+                        illegal = 1'b0;
+                    end
+
+                    3'b001: begin
+                        branch_type = BR_BNE;
+                        illegal = 1'b0;
+                    end
+
+                    3'b100: begin
+                        branch_type = BR_BLT;
+                        illegal = 1'b0;
+                    end
+
+                    3'b101: begin
+                        branch_type = BR_BGE;
+                        illegal = 1'b0;
+                    end
+
+                    3'b110: begin
+                        branch_type = BR_BLTU;
+                        illegal = 1'b0;
+                    end
+
+                    3'b111: begin
+                        branch_type = BR_BGEU;
+                        illegal = 1'b0;
+                    end
 
                     default: begin
                     end
@@ -333,6 +482,61 @@ module decoder (
 
             end
 
+            // ==================================
+            // U-type
+            // ================================== 
+
+            OPCODE_LUI: begin
+
+                reg_we    = 1'b1;
+
+                op_a_sel  = OP_A_ZERO;
+                op_b_imm  = 1'b1;
+
+                imm_sel   = IMM_U;
+
+                alu_op    = ALU_ADD;
+
+                wb_sel    = WB_ALU;
+
+                illegal   = 1'b0;
+
+            end
+
+            OPCODE_AUIPC: begin
+
+                reg_we    = 1'b1;
+
+                op_a_sel  = OP_A_PC;
+                op_b_imm  = 1'b1;
+
+                imm_sel   = IMM_U;
+
+                alu_op    = ALU_ADD;
+
+                wb_sel    = WB_ALU;
+
+                illegal   = 1'b0;
+
+            end
+
+            // ==================================
+            // J-type
+            // ================================== 
+
+            OPCODE_JAL: begin
+
+                reg_we   = 1'b1;
+
+                imm_sel  = IMM_J;
+
+                wb_sel   = WB_PC4;
+
+                jump     = JUMP_JAL;
+
+                illegal  = 1'b0;
+
+            end
 
             default: begin
             end

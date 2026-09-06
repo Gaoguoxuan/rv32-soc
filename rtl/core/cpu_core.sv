@@ -48,21 +48,37 @@ module cpu_core (
     // Immediate
     //============================
 
+    localparam logic [2:0] IMM_I = 3'b000;
+    localparam logic [2:0] IMM_S = 3'b001;
+    localparam logic [2:0] IMM_B = 3'b010;
+    localparam logic [2:0] IMM_U = 3'b011;
+    localparam logic [2:0] IMM_J = 3'b100;
+
     logic [31:0] imm_i;
     logic [31:0] imm_s;
     logic [31:0] imm_b;
+    logic [31:0] imm_u;
+    logic [31:0] imm_j;
+
     logic [31:0] imm;
 
-    logic [1:0]  imm_sel;
+    logic [2:0] imm_sel;
 
     //============================
     // ALU
     //============================
 
-    logic        alu_src_imm;
+    localparam logic [1:0] OP_A_RS1  = 2'b00;
+    localparam logic [1:0] OP_A_PC   = 2'b01;
+    localparam logic [1:0] OP_A_ZERO = 2'b10;
+
+    logic [1:0] op_a_sel;
+    logic       op_b_imm;
+
+    logic [31:0] alu_a;
+    logic [31:0] alu_b;
     logic [3:0]  alu_op;
 
-    logic [31:0] alu_b;
     logic [31:0] alu_result;
 
     //============================
@@ -70,7 +86,7 @@ module cpu_core (
     //============================
 
     logic        mem_we_int;
-    logic        wb_sel_mem;
+    logic  [1:0] wb_sel;
 
     logic [31:0] writeback_data;
 
@@ -78,17 +94,26 @@ module cpu_core (
     // Branch
     //============================
 
-    logic        branch_beq;
-    logic        branch_taken;
+    logic [2:0] branch_type;
+    logic       branch_taken;
+
+    localparam logic [1:0] JUMP_NONE = 2'b00;
+    localparam logic [1:0] JUMP_JAL  = 2'b01;
+    localparam logic [1:0] JUMP_JALR = 2'b10;
+    
+    logic [1:0] jump;
+
+    branch_unit u_branch_unit (
+        .branch_type (branch_type),
+        .a           (rs1_data),
+        .b           (rs2_data),
+        .taken       (branch_taken)
+    );
 
     logic [31:0] next_pc;
 
 
     logic        illegal;
-
-    localparam logic [1:0] IMM_I = 2'b00;
-    localparam logic [1:0] IMM_S = 2'b01;
-    localparam logic [1:0] IMM_B = 2'b10;
 
     //============================
     // Instruction fields
@@ -102,22 +127,32 @@ module cpu_core (
     // Decoder
     //============================
 
+    logic       mem_load;
+    logic       mem_store;
+
     decoder u_decoder (
         .instr       (instr),
 
         .reg_we      (reg_we),
-        .alu_src_imm (alu_src_imm),
+
         .alu_op      (alu_op),
+
+        .op_a_sel    (op_a_sel),
+        .op_b_imm    (op_b_imm),
 
         .imm_sel     (imm_sel),
 
-        .mem_we      (mem_we_int),
-        .wb_sel_mem  (wb_sel_mem),
+        .mem_load    (mem_load),
+        .mem_store   (mem_store),
 
-        .branch_beq  (branch_beq),
+        .wb_sel      (wb_sel),
+
+        .branch_type (branch_type),
+        .jump        (jump),
 
         .illegal     (illegal)
     );
+
 
     // ==============================
     // Immediate generator
@@ -128,11 +163,13 @@ module cpu_core (
 
         .imm_i (imm_i),
         .imm_s (imm_s),
-        .imm_b (imm_b)
+        .imm_b (imm_b),
+        .imm_u (imm_u),
+        .imm_j (imm_j)
     );
 
     always_comb begin
-        
+
         case (imm_sel)
 
             IMM_I:
@@ -143,6 +180,12 @@ module cpu_core (
 
             IMM_B:
                 imm = imm_b;
+
+            IMM_U:
+                imm = imm_u;
+
+            IMM_J:
+                imm = imm_j;
 
             default:
                 imm = 32'b0;
@@ -176,14 +219,34 @@ module cpu_core (
     // ALU input mux
     // ==============================
 
-    assign alu_b = alu_src_imm ? imm_i : rs2_data;
+    always_comb begin
+
+        case (op_a_sel)
+
+            OP_A_RS1:
+                alu_a = rs1_data;
+
+            OP_A_PC:
+                alu_a = pc;
+
+            OP_A_ZERO:
+                alu_a = 32'b0;
+
+            default:
+                alu_a = 32'b0;
+
+        endcase
+
+    end
+
+    assign alu_b = op_b_imm ? imm : rs2_data;
 
     // ============================
     // ALU
     // ============================
 
     alu u_alu (
-        .a      (rs1_data),
+        .a      (alu_a),
         .b      (alu_b),
         .op     (alu_op),
         .res    (alu_result)
@@ -206,22 +269,66 @@ module cpu_core (
     // Writeback MUX
     // ============================
 
-    // lw x5, 0(x0)
-    // alu_result作为address寻址内存
-    // 根据wb_sel_mem == 1将内存中对应区域的data取出写回reg x5
-    assign writeback_data = wb_sel_mem ? mem_rdata : alu_result;
+    localparam logic [1:0] WB_ALU = 2'b00;
+    localparam logic [1:0] WB_MEM = 2'b01;
+    localparam logic [1:0] WB_PC4 = 2'b10;
+
+    always_comb begin
+
+        case (wb_sel)
+
+            WB_ALU:
+                writeback_data = alu_result;
+
+            WB_MEM:
+                writeback_data = mem_rdata;
+
+            WB_PC4:
+                writeback_data = pc + 32'd4;
+
+            default:
+                writeback_data = 32'b0;
+
+        endcase
+
+    end
 
     // ============================
     // Branch
     // ============================
 
-    assign branch_taken = branch_beq && (rs1_data == rs2_data); 
+    assign branch_taken = (|branch_type) && (rs1_data == rs2_data); 
 
     assign next_pc = branch_taken ? (pc + imm_b) : (pc + 32'd4);
 
     // ============================
     // PC
     // ============================
+
+    always_comb begin
+
+        // 默认执行下一条指令
+        next_pc = pc + 32'd4;
+
+        if (jump == JUMP_JAL) begin
+
+            next_pc = pc + imm_j;
+
+        end
+
+        else if (jump == JUMP_JALR) begin
+
+            next_pc = (rs1_data + imm_i) & 32'hFFFF_FFFE;
+
+        end
+
+        else if (branch_taken) begin
+
+            next_pc = pc + imm_b;
+
+        end
+
+    end
 
     pc u_pc (
         .clk     (clk),
