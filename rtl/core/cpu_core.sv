@@ -11,20 +11,20 @@ module cpu_core (
     output logic [31:0] mem_wdata,
     input  logic [31:0] mem_rdata,
     output logic        mem_we,
-    output logic [3:0]  mem_wstrb,
+    output logic [3:0]  mem_wstrb
 
     // Debug signals
-    output logic        dbg_reg_we,
-    output logic [4:0]  dbg_rd_addr,
-    output logic [31:0] dbg_rd_data,
+    // output logic        dbg_reg_we,
+    // output logic [4:0]  dbg_rd_addr,
+    // output logic [31:0] dbg_rd_data,
 
-    output logic [31:0] dbg_rs1_data,
-    output logic [31:0] dbg_rs2_data,
+    // output logic [31:0] dbg_rs1_data,
+    // output logic [31:0] dbg_rs2_data,
 
-    output logic [31:0] dbg_imm,
+    // output logic [31:0] dbg_imm,
 
-    output logic        dbg_branch_taken,
-    output logic        dbg_illegal
+    // output logic        dbg_branch_taken,
+    // output logic        dbg_illegal
 );
 
     //============================
@@ -331,13 +331,10 @@ module cpu_core (
 
     end
 
-    // ============================
-    // Branch
-    // ============================
 
-    assign branch_taken = (|branch_type) && (rs1_data == rs2_data); 
+    //assign branch_taken = (|branch_type) && (rs1_data == rs2_data); 
 
-    assign next_pc = branch_taken ? (pc + imm_b) : (pc + 32'd4);
+    //assign next_pc = branch_taken ? (pc + imm_b) : (pc + 32'd4);
 
     // ============================
     // PC
@@ -345,7 +342,6 @@ module cpu_core (
 
     always_comb begin
 
-        // 默认执行下一条指令
         next_pc = pc + 32'd4;
 
         if (jump == JUMP_JAL) begin
