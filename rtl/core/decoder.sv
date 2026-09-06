@@ -10,6 +10,9 @@ module decoder (
 
     output logic [2:0]  imm_sel,
 
+    output logic [2:0]  load_type,
+    output logic [2:0]  store_type,
+
     output logic        mem_load,
     output logic        mem_store,
 
@@ -104,6 +107,22 @@ module decoder (
     localparam logic [1:0] JUMP_JAL  = 2'b01;
     localparam logic [1:0] JUMP_JALR = 2'b10;
 
+    // ========================================
+    // LOAD / STORE type
+    // ========================================
+
+    localparam logic [2:0] LD_NONE = 3'b000;
+    localparam logic [2:0] LD_B    = 3'b001;
+    localparam logic [2:0] LD_H    = 3'b010;
+    localparam logic [2:0] LD_W    = 3'b011;
+    localparam logic [2:0] LD_BU   = 3'b100;
+    localparam logic [2:0] LD_HU   = 3'b101;
+
+    localparam logic [1:0] ST_NONE = 2'b00;
+    localparam logic [1:0] ST_B    = 2'b01;
+    localparam logic [1:0] ST_H    = 2'b10;
+    localparam logic [1:0] ST_W    = 2'b11;
+
     always_comb begin
 
         // ====================================
@@ -119,12 +138,15 @@ module decoder (
 
         imm_sel   = IMM_I;
 
+        load_type  = LD_NONE;
+        store_type = ST_NONE;
+
         mem_load  = 1'b0;
         mem_store = 1'b0;
 
         wb_sel    = WB_ALU;
 
-        branch_type = 3'b000;
+        branch_type = BR_NONE;
         jump      = 2'b00;
 
         illegal   = 1'b1;
@@ -367,9 +389,6 @@ module decoder (
 
             OPCODE_LOAD: begin
 
-                // LW
-                if (instr[14:12] == 3'b010) begin
-
                     reg_we    = 1'b1;
 
                     op_a_sel  = OP_A_RS1;
@@ -385,7 +404,37 @@ module decoder (
 
                     illegal   = 1'b0;
 
-                end
+                    case (instr[14:12])
+
+                        // LB
+                        3'b000: begin
+                            load_type = LD_B;
+                        end
+
+                        // LH
+                        3'b001: begin
+                            load_type = LD_H;
+                        end
+
+                        // LW
+                        3'b010: begin
+                            load_type = LD_W;
+                        end
+
+                        // LBU
+                        3'b100: begin
+                            load_type = LD_BU;
+                        end
+
+                        // LHU
+                        3'b101: begin
+                            load_type = LD_HU;
+                        end
+
+                        default: begin
+                        end
+
+                    endcase
 
             end
 
@@ -417,9 +466,6 @@ module decoder (
 
             OPCODE_STORE: begin
 
-                // SW
-                if (instr[14:12] == 3'b010) begin
-
                     op_a_sel  = OP_A_RS1;
                     op_b_imm  = 1'b1;
 
@@ -431,9 +477,29 @@ module decoder (
 
                     illegal   = 1'b0;
 
-                end
+                    case (instr[14:12])
 
-            end
+                        // SB
+                        3'b000: begin
+                            store_type = ST_B;
+                        end
+
+                        // SH
+                        3'b001: begin
+                            store_type = ST_H;
+                        end
+
+                        // SW
+                        3'b010: begin
+                            store_type = ST_W;
+                        end
+
+                        default: begin
+                        end
+
+                    endcase
+
+                end
 
             // ==================================
             // B-type
@@ -552,6 +618,8 @@ module decoder (
             reg_we    = 1'b0;
             mem_load  = 1'b0;
             mem_store = 1'b0;
+            load_type  = LD_NONE;
+            store_type = ST_NONE;
 
         end
 

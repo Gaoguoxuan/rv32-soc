@@ -11,6 +11,7 @@ module cpu_core (
     output logic [31:0] mem_wdata,
     input  logic [31:0] mem_rdata,
     output logic        mem_we,
+    output logic [3:0]  mem_wstrb,
 
     // Debug signals
     output logic        dbg_reg_we,
@@ -85,10 +86,20 @@ module cpu_core (
     // Memory / Writeback
     //============================
 
-    logic        mem_we_int;
-    logic  [1:0] wb_sel;
+    //logic        mem_we_int;
+    logic [1:0]  wb_sel;
 
     logic [31:0] writeback_data;
+
+    logic [2:0]  load_type;
+    logic [1:0]  store_type;
+
+    logic [31:0] load_data;
+
+    logic [31:0] lsu_wdata;
+    logic [3:0]  lsu_wstrb;
+
+    logic        lsu_misaligned;
 
     //============================
     // Branch
@@ -139,6 +150,9 @@ module cpu_core (
 
         .op_a_sel    (op_a_sel),
         .op_b_imm    (op_b_imm),
+
+        .load_type  (load_type),
+        .store_type (store_type),
 
         .imm_sel     (imm_sel),
 
@@ -198,7 +212,7 @@ module cpu_core (
     // Register File
     // ==============================
 
-    assign rf_we = reg_we && !illegal && (rd_addr != 5'd0);
+    assign rf_we = reg_we && !illegal && !lsu_misaligned &&(rd_addr != 5'd0);
 
     regfile u_regfile (
         .clk      (clk),
@@ -253,6 +267,29 @@ module cpu_core (
     );
 
     // ============================
+    // LSU
+    // ============================
+
+
+    lsu u_lsu (
+        .addr        (alu_result),
+
+        .store_data  (rs2_data),
+
+        .mem_rdata   (mem_rdata),
+
+        .load_type   (load_type),
+        .store_type  (store_type),
+
+        .load_data   (load_data),
+
+        .mem_wdata   (lsu_wdata),
+        .mem_wstrb   (lsu_wstrb),
+
+        .misaligned  (lsu_misaligned)
+    );
+
+    // ============================
     // Data Memory Interface
     // ============================
 
@@ -261,9 +298,10 @@ module cpu_core (
     // x3作为rs2_data将写入adress寻址区域
     assign mem_addr = alu_result;
 
-    assign mem_wdata = rs2_data;
+    assign mem_wdata = lsu_wdata;
+    assign mem_wstrb = lsu_wstrb;
 
-    assign mem_we = mem_we_int && !illegal;
+    assign mem_we = mem_store && !illegal && !lsu_misaligned && (|lsu_wstrb);
 
     // ============================
     // Writeback MUX
@@ -281,7 +319,7 @@ module cpu_core (
                 writeback_data = alu_result;
 
             WB_MEM:
-                writeback_data = mem_rdata;
+                writeback_data = load_data;
 
             WB_PC4:
                 writeback_data = pc + 32'd4;
