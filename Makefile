@@ -17,6 +17,109 @@ RTL := \
     rtl/core/lsu.sv \
     rtl/core/cpu_core.sv
 
+# ============================================================
+# SoC RTL
+# ============================================================
+
+SOC_RTL := \
+    rtl/soc/simple_ram.sv \
+    rtl/soc/uart_mmio.sv \
+    rtl/soc/rv32_soc.sv
+
+# ============================================================
+# UART bare-metal software
+# ============================================================
+
+UART_DIR := build/uart
+
+UART_START := sw/uart/start.S
+UART_SRC   := sw/uart/main.c
+UART_LDS   := sw/uart/link.ld
+
+UART_ELF  := $(UART_DIR)/uart.elf
+UART_BIN  := $(UART_DIR)/uart.bin
+UART_HEX  := $(UART_DIR)/uart.hex
+UART_DUMP := $(UART_DIR)/uart.dump
+UART_MAP  := $(UART_DIR)/uart.map
+
+UART_SIM := build/obj_uart/Vtb_soc_uart
+
+UART_CFLAGS := \
+    -march=rv32i \
+    -mabi=ilp32 \
+    -O0 \
+    -g \
+    -ffreestanding \
+    -fno-builtin \
+    -fno-pic \
+    -msmall-data-limit=0 \
+    -nostdlib \
+    -nostartfiles
+
+UART_LDFLAGS := \
+    -Wl,-T,$(UART_LDS) \
+    -Wl,--no-relax \
+    -Wl,-Map,$(UART_MAP)
+
+# ============================================================
+# UART software build
+# ============================================================    
+
+$(UART_ELF): $(UART_START) $(UART_SRC) $(UART_LDS)
+>mkdir -p $(UART_DIR)
+>$(RISCV_GCC) \
+>    $(UART_CFLAGS) \
+>    $(UART_LDFLAGS) \
+>    -o $(UART_ELF) \
+>    $(UART_START) \
+>    $(UART_SRC)
+
+$(UART_BIN): $(UART_ELF)
+>$(RISCV_OBJCOPY) \
+>    -O binary \
+>    $(UART_ELF) \
+>    $(UART_BIN)
+
+$(UART_HEX): $(UART_BIN) scripts/bin2hex.py
+>python3 scripts/bin2hex.py \
+>    $(UART_BIN) \
+>    $(UART_HEX)
+
+$(UART_DUMP): $(UART_ELF)
+>$(RISCV_OBJDUMP) \
+>    -d \
+>    -M no-aliases \
+>    $(UART_ELF) \
+>    > $(UART_DUMP)
+
+# ============================================================
+# UART SoC simulation
+# ============================================================
+
+$(UART_SIM): $(RTL) $(SOC_RTL) tb/tb_soc_uart.sv
+>mkdir -p build/obj_uart
+>$(VERILATOR) \
+>    --binary \
+>    --timing \
+>    --trace \
+>    -Wall \
+>    -Wno-fatal \
+>    -Wno-PINMISSING \
+>    --Mdir build/obj_uart \
+>    --top-module tb_soc_uart \
+>    $(RTL) \
+>    $(SOC_RTL) \
+>    tb/tb_soc_uart.sv
+
+uart-test: $(UART_HEX) $(UART_DUMP) $(UART_SIM)
+>./$(UART_SIM)
+
+uart-dump: $(UART_DUMP)
+>cat $(UART_DUMP)
+
+uart-wave: uart-test
+>gtkwave build/uart/uart.vcd &
+
 
 TB := tb/tb_rv32i.sv
 
@@ -30,9 +133,6 @@ VFLAGS := \
     -Wno-PINMISSING \
     --top-module $(TOP)
 
-RISCV_GCC     := riscv64-unknown-elf-gcc
-RISCV_OBJCOPY := riscv64-unknown-elf-objcopy
-RISCV_OBJDUMP := riscv64-unknown-elf-objdump
 
 ASM_DIR := build/asm
 
@@ -93,7 +193,10 @@ LDFLAGS_C := \
     -Wl,-Map,$(C_MAP)
 
 
-.PHONY: all test build lint wave clean asm-test asm-dump c-test c-dump
+.PHONY: all test build lint wave clean \
+        asm-test asm-dump \
+        c-test c-dump \
+        uart-test uart-dump uart-wave
 
 $(ASM_ELF): $(ASM_SRC) $(ASM_LDS)
 >mkdir -p $(ASM_DIR)
@@ -239,5 +342,9 @@ wave: test
 
 clean:
 >rm -rf obj_dir
->rm -f build/*.vcd
->rm -f build/*.fst
+>rm -rf build/obj_asm
+>rm -rf build/obj_c
+>rm -rf build/obj_uart
+>rm -rf build/asm
+>rm -rf build/c
+>rm -rf build/uart
