@@ -4,27 +4,37 @@ module tb_soc_uart;
     logic rst;
 
     logic [31:0] pc;
-    logic [31:0] instr;
+    //logic [31:0] instr;
 
     logic uart_tx_valid;
     logic [7:0] uart_tx_data;
 
-    logic [31:0] imem [0:1023];
+    //logic [31:0] imem [0:1023];
 
-    integer i;
+    //integer i;
 
+    // ============================================================
+    // DUT
+    // ============================================================
 
-    rv32_soc dut (
+    rv32_soc #(
+        .ROM_HEX (
+            "build/uart/uart.hex"
+        )
+    ) dut (
         .clk           (clk),
         .rst           (rst),
 
-        .instr         (instr),
+        //.instr         (instr),
         .pc            (pc),
 
         .uart_tx_valid (uart_tx_valid),
         .uart_tx_data  (uart_tx_data)
     );
 
+    // ============================================================
+    // Clock
+    // ============================================================
 
     initial begin
 
@@ -35,15 +45,18 @@ module tb_soc_uart;
     end
 
 
-    always_comb begin
+    // always_comb begin
 
-        if (pc < 32'h00001000)
-            instr = imem[pc[11:2]];
-        else
-            instr = 32'h00000013;
+    //     if (pc < 32'h00001000)
+    //         instr = imem[pc[11:2]];
+    //     else
+    //         instr = 32'h00000013;
 
-    end
+    // end
 
+    // ============================================================
+    // Observe UART
+    // ============================================================
 
     always_ff @(posedge clk) begin
 
@@ -51,6 +64,10 @@ module tb_soc_uart;
             $write("%c", uart_tx_data);
 
     end
+
+    // ============================================================
+    // Simulation
+    // ============================================================
 
     initial begin
 
@@ -70,13 +87,13 @@ module tb_soc_uart;
 
         rst = 1'b1;
 
-        for (i = 0; i < 1024; i = i + 1)
-            imem[i] = 32'h00000013;
+        // for (i = 0; i < 1024; i = i + 1)
+        //     imem[i] = 32'h00000013;
 
-        $readmemh(
-            "build/uart/uart.hex",
-            imem
-        );
+        // $readmemh(
+        //     "build/uart/uart.hex",
+        //     imem
+        // );
 
         repeat (2)
             @(posedge clk);
@@ -92,7 +109,8 @@ module tb_soc_uart;
 
         $display("");
         $display("==============================");
-        $display("       UART TEST DONE");
+        //$display("       UART TEST DONE");
+        $display("       M6.2 ROM TEST DONE");
         $display("==============================");
 
         $finish;

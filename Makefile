@@ -24,6 +24,7 @@ RTL := \
 SOC_RTL := \
     rtl/soc/simple_ram.sv \
     rtl/soc/uart_mmio.sv \
+    rtl/soc/simple_rom.sv \
     rtl/soc/rv32_soc.sv
 
 # ============================================================
