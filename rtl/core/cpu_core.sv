@@ -13,6 +13,7 @@ module cpu_core (
     output logic        mem_we,
     output logic [3:0]  mem_wstrb
 
+
     // Debug signals
     // output logic        dbg_reg_we,
     // output logic [4:0]  dbg_rd_addr,
@@ -102,6 +103,123 @@ module cpu_core (
     logic        lsu_misaligned;
 
     //============================
+    // CSR signals
+    //============================
+
+    localparam logic [1:0] CSR_NONE = 2'b00;
+    localparam logic [1:0] CSR_RW   = 2'b01;
+    localparam logic [1:0] CSR_RS   = 2'b10;
+    localparam logic [1:0] CSR_RC   = 2'b11;
+
+    logic        csr_en;
+    logic [1:0]  csr_cmd;
+    logic        csr_use_imm;
+
+    logic [11:0] csr_addr;
+
+    logic [31:0] csr_rdata;
+    logic [31:0] csr_wdata;
+    logic [31:0] csr_src;
+
+    logic        csr_valid;
+    logic        csr_writable;
+    logic        csr_we;
+
+    logic        csr_write_intent;
+    logic        csr_access_illegal;
+    logic        effective_illegal;
+
+    logic [31:0] csr_zimm;
+
+    logic [31:0] mstatus;
+    logic [31:0] mie;
+    logic [31:0] mtvec;
+    logic [31:0] mscratch;
+    logic [31:0] mepc;
+    logic [31:0] mcause;
+    logic [31:0] mip;
+
+    assign csr_addr = instr[31:20];
+
+    assign csr_zimm = {27'b0, instr[19:15]};
+
+    assign csr_src = csr_use_imm
+                   ? csr_zimm
+                   : rs1_data;
+
+    csr_file u_csr_file (
+        .clk          (clk),
+        .rst          (rst),
+
+        .csr_addr     (csr_addr),
+
+        .csr_rdata    (csr_rdata),
+        .csr_valid    (csr_valid),
+        .csr_writable (csr_writable),
+
+        .csr_we       (csr_we),
+        .csr_wdata    (csr_wdata),
+
+        .mstatus      (mstatus),
+        .mie          (mie),
+        .mtvec        (mtvec),
+        .mscratch     (mscratch),
+        .mepc         (mepc),
+        .mcause       (mcause),
+        .mip          (mip)
+    );
+
+    always_comb begin
+
+        csr_wdata = csr_rdata;
+
+        case (csr_cmd)
+
+            CSR_RW:
+                csr_wdata = csr_src;
+
+            CSR_RS:
+                csr_wdata = csr_rdata | csr_src;
+
+            CSR_RC:
+                csr_wdata = csr_rdata & ~csr_src;
+
+            default:
+                csr_wdata = csr_rdata;
+
+        endcase
+
+    end
+
+    always_comb begin
+
+        csr_write_intent = 1'b0;
+
+        case (csr_cmd)
+
+            CSR_RW:
+                csr_write_intent = 1'b1;
+
+            CSR_RS,
+            CSR_RC:
+                csr_write_intent = (instr[19:15] != 5'b0);
+
+            default:
+                csr_write_intent = 1'b0;
+
+        endcase
+
+    end
+
+    // 非法 CSR 访问
+    assign csr_access_illegal = csr_en && (!csr_valid || (csr_write_intent && !csr_writable));
+
+    assign effective_illegal  = illegal || csr_access_illegal;
+
+    assign csr_we = csr_en && csr_write_intent && !effective_illegal;
+
+
+    //============================
     // Branch
     //============================
 
@@ -164,9 +282,14 @@ module cpu_core (
         .branch_type (branch_type),
         .jump        (jump),
 
+        .csr_en      (csr_en),
+        .csr_cmd     (csr_cmd),
+        .csr_use_imm (csr_use_imm),
+
         .illegal     (illegal)
     );
 
+    
 
     // ==============================
     // Immediate generator
@@ -212,7 +335,7 @@ module cpu_core (
     // Register File
     // ==============================
 
-    assign rf_we = reg_we && !illegal && !lsu_misaligned &&(rd_addr != 5'd0);
+    assign rf_we = reg_we && !effective_illegal && !lsu_misaligned &&(rd_addr != 5'd0);
 
     regfile u_regfile (
         .clk      (clk),
@@ -301,7 +424,7 @@ module cpu_core (
     assign mem_wdata = lsu_wdata;
     assign mem_wstrb = lsu_wstrb;
 
-    assign mem_we = mem_store && !illegal && !lsu_misaligned && (|lsu_wstrb);
+    assign mem_we = mem_store && !effective_illegal && !lsu_misaligned && (|lsu_wstrb);
 
     // ============================
     // Writeback MUX
@@ -310,6 +433,7 @@ module cpu_core (
     localparam logic [1:0] WB_ALU = 2'b00;
     localparam logic [1:0] WB_MEM = 2'b01;
     localparam logic [1:0] WB_PC4 = 2'b10;
+    localparam logic [1:0] WB_CSR = 2'b11;
 
     always_comb begin
 
@@ -323,6 +447,9 @@ module cpu_core (
 
             WB_PC4:
                 writeback_data = pc + 32'd4;
+            
+            WB_CSR:
+                writeback_data = csr_rdata;
 
             default:
                 writeback_data = 32'b0;

@@ -15,6 +15,7 @@ RTL := \
     rtl/core/decoder.sv \
     rtl/core/branch_unit.sv \
     rtl/core/lsu.sv \
+    rtl/core/csr_file.sv \
     rtl/core/cpu_core.sv
 
 # ============================================================

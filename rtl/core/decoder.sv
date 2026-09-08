@@ -21,6 +21,10 @@ module decoder (
     output logic [2:0]  branch_type,
     output logic [1:0]  jump,
 
+    output logic       csr_en,
+    output logic [1:0] csr_cmd,
+    output logic       csr_use_imm,
+
     output logic        illegal
 );
 
@@ -41,6 +45,8 @@ module decoder (
 
     localparam logic [6:0] OPCODE_JAL    = 7'b1101111;
     localparam logic [6:0] OPCODE_JALR   = 7'b1100111;
+
+    localparam logic [6:0] OPCODE_SYSTEM = 7'b1110011;
 
 
     // ========================================
@@ -86,6 +92,7 @@ module decoder (
     localparam logic [1:0] WB_ALU = 2'b00;
     localparam logic [1:0] WB_MEM = 2'b01;
     localparam logic [1:0] WB_PC4 = 2'b10;
+    localparam logic [1:0] WB_CSR = 2'b11;
 
     // ========================================
     // Branch type
@@ -123,6 +130,16 @@ module decoder (
     localparam logic [1:0] ST_H    = 2'b10;
     localparam logic [1:0] ST_W    = 2'b11;
 
+    // ========================================
+    // CSR type
+    // ========================================
+
+    localparam logic [1:0] CSR_NONE = 2'b00;
+    localparam logic [1:0] CSR_RW   = 2'b01;
+    localparam logic [1:0] CSR_RS   = 2'b10;
+    localparam logic [1:0] CSR_RC   = 2'b11;
+
+
     always_comb begin
 
         // ====================================
@@ -148,6 +165,10 @@ module decoder (
 
         branch_type = BR_NONE;
         jump      = 2'b00;
+
+        csr_en      = 1'b0;
+        csr_cmd     = CSR_NONE;
+        csr_use_imm = 1'b0;
 
         illegal   = 1'b1;
 
@@ -601,6 +622,104 @@ module decoder (
                 jump     = JUMP_JAL;
 
                 illegal  = 1'b0;
+
+            end
+
+            // ==================================
+            // CSR-type
+            // ================================== 
+
+            OPCODE_SYSTEM: begin
+
+                case (instr[14:12])
+
+                    // CSRRW
+                    3'b001: begin
+                        csr_en      = 1'b1;
+                        csr_cmd     = CSR_RW;
+                        csr_use_imm = 1'b0;
+
+                        reg_we      = 1'b1;
+                        wb_sel      = WB_CSR;
+
+                        illegal     = 1'b0;
+                    end
+
+
+                    // CSRRS
+                    3'b010: begin
+                        csr_en      = 1'b1;
+                        csr_cmd     = CSR_RS;
+                        csr_use_imm = 1'b0;
+
+                        reg_we      = 1'b1;
+                        wb_sel      = WB_CSR;
+
+                        illegal     = 1'b0;
+                    end
+
+
+                    // CSRRC
+                    3'b011: begin
+                        csr_en      = 1'b1;
+                        csr_cmd     = CSR_RC;
+                        csr_use_imm = 1'b0;
+
+                        reg_we      = 1'b1;
+                        wb_sel      = WB_CSR;
+
+                        illegal     = 1'b0;
+                    end
+
+
+                    // CSRRWI
+                    3'b101: begin
+                        csr_en      = 1'b1;
+                        csr_cmd     = CSR_RW;
+                        csr_use_imm = 1'b1;
+
+                        reg_we      = 1'b1;
+                        wb_sel      = WB_CSR;
+
+                        illegal     = 1'b0;
+                    end
+
+
+                    // CSRRSI
+                    3'b110: begin
+                        csr_en      = 1'b1;
+                        csr_cmd     = CSR_RS;
+                        csr_use_imm = 1'b1;
+
+                        reg_we      = 1'b1;
+                        wb_sel      = WB_CSR;
+
+                        illegal     = 1'b0;
+                    end
+
+
+                    // CSRRCI
+                    3'b111: begin
+                        csr_en      = 1'b1;
+                        csr_cmd     = CSR_RC;
+                        csr_use_imm = 1'b1;
+
+                        reg_we      = 1'b1;
+                        wb_sel      = WB_CSR;
+
+                        illegal     = 1'b0;
+                    end
+
+
+                    // funct3=000:
+                    //
+                    // ECALL / EBREAK / MRET
+                    //
+                    // M8 再实现，现在保持 illegal。
+                    default: begin
+                    end
+
+                endcase
 
             end
 
