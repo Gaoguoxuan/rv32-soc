@@ -122,6 +122,81 @@ uart-dump: $(UART_DUMP)
 uart-wave: uart-test
 >gtkwave build/uart/uart.vcd &
 
+# ============================================================
+# Zicsr assembly test
+# ============================================================
+
+ZICSR_DIR := build/zicsr
+
+ZICSR_SRC := sw/asm/zicsr_test.S
+ZICSR_LDS := sw/asm/link.ld
+
+ZICSR_ELF  := $(ZICSR_DIR)/zicsr.elf
+ZICSR_BIN  := $(ZICSR_DIR)/zicsr.bin
+ZICSR_HEX  := $(ZICSR_DIR)/zicsr.hex
+ZICSR_DUMP := $(ZICSR_DIR)/zicsr.dump
+ZICSR_MAP  := $(ZICSR_DIR)/zicsr.map
+
+ZICSR_SIM := build/obj_zicsr/Vtb_zicsr_asm
+
+$(ZICSR_ELF): $(ZICSR_SRC) $(ZICSR_LDS)
+>mkdir -p $(ZICSR_DIR)
+>$(RISCV_GCC) \
+>    -march=rv32i_zicsr \
+>    -mabi=ilp32 \
+>    -nostdlib \
+>    -nostartfiles \
+>    -ffreestanding \
+>    -Wl,-T,$(ZICSR_LDS) \
+>    -Wl,--no-relax \
+>    -Wl,-Map,$(ZICSR_MAP) \
+>    -o $(ZICSR_ELF) \
+>    $(ZICSR_SRC)
+
+
+$(ZICSR_BIN): $(ZICSR_ELF)
+>$(RISCV_OBJCOPY) \
+>    -O binary \
+>    $(ZICSR_ELF) \
+>    $(ZICSR_BIN)
+
+
+$(ZICSR_HEX): $(ZICSR_BIN) scripts/bin2hex.py
+>python3 scripts/bin2hex.py \
+>    $(ZICSR_BIN) \
+>    $(ZICSR_HEX)
+
+
+$(ZICSR_DUMP): $(ZICSR_ELF)
+>$(RISCV_OBJDUMP) \
+>    -d \
+>    -M no-aliases \
+>    $(ZICSR_ELF) \
+>    > $(ZICSR_DUMP)
+
+
+$(ZICSR_SIM): $(RTL) tb/tb_zicsr_asm.sv
+>mkdir -p build/obj_zicsr
+>$(VERILATOR) \
+>    --binary \
+>    --timing \
+>    --trace \
+>    -Wall \
+>    -Wno-fatal \
+>    -Wno-PINMISSING \
+>    --Mdir build/obj_zicsr \
+>    --top-module tb_zicsr_asm \
+>    $(RTL) \
+>    tb/tb_zicsr_asm.sv
+
+
+zicsr-test: $(ZICSR_HEX) $(ZICSR_DUMP) $(ZICSR_SIM)
+>./$(ZICSR_SIM)
+
+
+zicsr-dump: $(ZICSR_DUMP)
+>cat $(ZICSR_DUMP)
+
 
 TB := tb/tb_rv32i.sv
 
