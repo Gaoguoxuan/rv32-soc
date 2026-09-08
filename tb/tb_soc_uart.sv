@@ -103,14 +103,15 @@ module tb_soc_uart;
         rst = 1'b0;
 
 
-        repeat (500)
+        repeat (5000)
             @(posedge clk);
 
 
         $display("");
         $display("==============================");
         //$display("       UART TEST DONE");
-        $display("       M6.2 ROM TEST DONE");
+        //$display("       M6.2 ROM TEST DONE");
+        $display("       M6.3 CRT TEST DONE");
         $display("==============================");
 
         $finish;
