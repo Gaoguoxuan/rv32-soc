@@ -124,6 +124,9 @@ module cpu_core (
     logic [31:0] trap_cause;
     logic [31:0] trap_vector;
 
+    logic [31:0] trap_tval;
+    logic [31:0] mtval;
+
     logic [31:0] csr_rdata;
     logic [31:0] csr_wdata;
     logic [31:0] csr_src;
@@ -165,6 +168,10 @@ module cpu_core (
     //assign trap_cause = 32'd11;
     assign trap_cause = effective_illegal ? 32'd2 : 32'd11;
 
+    assign trap_tval = !effective_illegal     ? 32'b0 : 
+                        (instr[1:0] == 2'b11) ? instr : 
+                                                {16'b0, instr[15:0]};
+
     csr_file u_csr_file (
         .clk          (clk),
         .rst          (rst),
@@ -176,6 +183,10 @@ module cpu_core (
         .trap_cause  (trap_cause),
 
         .mret_enter  (mret_enter),
+
+        .trap_tval   (trap_tval),
+
+        .mtval        (mtval),
 
         .csr_rdata    (csr_rdata),
         .csr_valid    (csr_valid),

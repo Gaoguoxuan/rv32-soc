@@ -24,6 +24,7 @@ module tb_ecall_asm;
     logic [31:0] saved_mtvec;
     logic [31:0] saved_mepc;
     logic [31:0] saved_mcause;
+    logic [31:0] saved_mtval;
 
     cpu_core dut (
         .clk       (clk),
@@ -69,6 +70,8 @@ module tb_ecall_asm;
                 saved_pc      = pc;
                 saved_mstatus = dut.mstatus;
                 saved_mtvec   = dut.mtvec;
+                check_value("ECALL prior mtval", dut.mtval,
+                            trap_count == 0 ? 32'h89ab_cdef : 32'h1357_9bdf);
                 trap_count++;
 
                 check_value("ECALL normal writes",
@@ -81,6 +84,7 @@ module tb_ecall_asm;
                             {saved_mtvec[31:2], 2'b00});
                 check_value("ECALL mepc", dut.mepc, saved_pc);
                 check_value("ECALL mcause", dut.mcause, 32'd11);
+                check_value("ECALL clears mtval", dut.mtval, 32'b0);
                 check_value("ECALL MIE", {31'b0, dut.mstatus[3]}, 32'd0);
                 check_value("ECALL MPIE", {31'b0, dut.mstatus[7]},
                             {31'b0, saved_mstatus[3]});
@@ -90,6 +94,7 @@ module tb_ecall_asm;
                 saved_mstatus = dut.mstatus;
                 saved_mepc    = dut.mepc;
                 saved_mcause  = dut.mcause;
+                saved_mtval   = dut.mtval;
                 mret_count++;
 
                 check_value("MRET normal writes",
@@ -106,6 +111,7 @@ module tb_ecall_asm;
                             {30'b0, dut.mstatus[12:11]}, 32'd3);
                 check_value("MRET preserves mepc", dut.mepc, saved_mepc);
                 check_value("MRET preserves mcause", dut.mcause, saved_mcause);
+                check_value("MRET preserves mtval", dut.mtval, saved_mtval);
             end
         end
     end
@@ -121,6 +127,8 @@ module tb_ecall_asm;
         $dumpvars(0, tb_ecall_asm);
 
         repeat (2) @(posedge clk);
+        #1;
+        check_value("mtval reset", dut.mtval, 32'b0);
         @(negedge clk);
         rst = 1'b0;
 
@@ -143,6 +151,7 @@ module tb_ecall_asm;
                 check_value("Successful returns (s1)", dut.u_regfile.regs[9], 32'd2);
                 $display("==============================");
                 $display("     M8.1 ECALL/MRET PASS");
+                $display("  M8.3 MTVAL ECALL CHECKS PASS");
                 $display("==============================");
                 $finish;
             end

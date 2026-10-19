@@ -7,6 +7,16 @@ _start:
     li      s0, 0                  # Number of handler entries
     li      s1, 0                  # Number of successful returns
 
+    # Read mtval through actual CSR instructions, then leave a nonzero
+    # value for ECALL to overwrite. CSRRW must also return the old value.
+    csrr    t0, mtval
+    bne     t0, zero, fail
+    li      t0, 0x89abcdef
+    csrrw   t1, mtval, t0
+    bne     t1, zero, fail
+    csrr    t1, mtval
+    bne     t1, t0, fail
+
     la      t0, trap_handler
     csrw    mtvec, t0             # Direct mode; handler is 4-byte aligned
 
@@ -34,6 +44,10 @@ ecall_enabled:
     # Entry must overwrite the old MPIE with MIE=0.
     li      t0, 0x80
     csrw    mstatus, t0
+    li      t0, 0x13579bdf
+    csrw    mtval, t0              # Test rd=x0 CSR write and a second clear
+    csrr    t1, mtval
+    bne     t1, t0, fail
     la      s2, ecall_disabled
     li      s3, 0x1800
 
@@ -69,6 +83,9 @@ trap_handler:
 
     csrr    t1, mstatus
     bne     t1, s3, fail
+
+    csrr    t1, mtval
+    bne     t1, zero, fail
 
     addi    s0, s0, 1
 

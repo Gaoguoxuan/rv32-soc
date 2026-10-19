@@ -29,6 +29,13 @@ module tb_csr_file;
 
         .csr_addr     (csr_addr),
 
+        .trap_enter   (1'b0),
+        .trap_pc      (32'b0),
+        .trap_cause   (32'b0),
+        .trap_tval    (32'b0),
+        .mret_enter   (1'b0),
+        .mtval        (),
+
         .csr_rdata    (csr_rdata),
         .csr_valid    (csr_valid),
         .csr_writable (csr_writable),
@@ -87,7 +94,7 @@ module tb_csr_file;
 
             #1;
 
-            if (csr_rdata === expected) begin
+            if (csr_valid && csr_rdata === expected) begin
 
                 $display(
                     "[PASS] %-10s = %08x",
@@ -125,6 +132,34 @@ module tb_csr_file;
         repeat (2)
             @(posedge clk);
 
+        @(negedge clk);
+        rst = 1'b0;
+
+
+        // --------------------------------------------
+        // mtval reset, CSR write/read, and reset after a nonzero value.
+        // The second reset catches a missing reset assignment even in a
+        // simulator that initializes registers to zero automatically.
+        // --------------------------------------------
+
+        check_csr(12'h343, 32'b0, "mtval reset");
+
+        if (!csr_writable) begin
+            $display("[FAIL] mtval should be writable");
+            errors++;
+        end
+
+        write_csr(12'h343, 32'h89abcdef);
+        check_csr(12'h343, 32'h89abcdef, "mtval write");
+
+        write_csr(12'h343, 32'h13579bdf);
+        check_csr(12'h343, 32'h13579bdf, "mtval rewrite");
+
+        @(negedge clk);
+        rst = 1'b1;
+        @(posedge clk);
+        #1;
+        check_csr(12'h343, 32'b0, "mtval re-reset");
         @(negedge clk);
         rst = 1'b0;
 
@@ -214,6 +249,7 @@ module tb_csr_file;
             $display("");
             $display("==============================");
             $display("       M7.1 CSR FILE PASS");
+            $display("   M8.3 MTVAL CSR CHECKS PASS");
             $display("==============================");
 
         end

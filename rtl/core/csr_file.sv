@@ -10,6 +10,10 @@ module csr_file (
 
     input logic        mret_enter,
 
+    input logic [31:0] trap_tval,
+
+    output logic [31:0] mtval,
+
     output logic [31:0] csr_rdata,
     output logic        csr_valid,
     output logic        csr_writable,
@@ -37,6 +41,7 @@ module csr_file (
     localparam logic [11:0] CSR_MSCRATCH = 12'h340;
     localparam logic [11:0] CSR_MEPC     = 12'h341;
     localparam logic [11:0] CSR_MCAUSE   = 12'h342;
+    localparam logic [11:0] CSR_MTVAL    = 12'h343;
     localparam logic [11:0] CSR_MIP      = 12'h344;
 
 
@@ -69,6 +74,9 @@ module csr_file (
 
             CSR_MCAUSE:
                 csr_rdata = mcause;
+
+            CSR_MTVAL: 
+                csr_rdata = mtval;
 
             CSR_MIP: begin
                 csr_rdata    = mip;
@@ -104,6 +112,7 @@ module csr_file (
             mscratch <= 32'b0;
             mepc     <= 32'b0;
             mcause   <= 32'b0;
+            mtval    <= 32'b0;
 
             mip      <= 32'b0;
 
@@ -117,6 +126,7 @@ module csr_file (
 
             mepc   <= trap_pc;
             mcause <= trap_cause;
+            mtval  <= trap_tval;
 
             // mstatus.MPIE <- mstatus.MIE
             mstatus[7] <= mstatus[3];
@@ -174,6 +184,9 @@ module csr_file (
 
                 CSR_MCAUSE:
                     mcause <= csr_wdata;
+                
+                CSR_MTVAL:
+                    mtval <= csr_wdata;
 
                 default: begin
                 end

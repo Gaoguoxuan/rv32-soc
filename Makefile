@@ -328,6 +328,33 @@ illegal-wave: illegal-test
 >gtkwave $(ILLEGAL_DIR)/illegal.vcd &
 
 
+# ============================================================
+# CSR unit test and M8.3 mtval checks
+# ============================================================
+
+CSR_SIM := build/obj_csr/Vtb_csr_file
+
+$(CSR_SIM): rtl/core/csr_file.sv tb/tb_csr_file.sv
+>mkdir -p build/obj_csr
+>$(VERILATOR) \
+>    --binary \
+>    --timing \
+>    -Wall \
+>    -Wno-fatal \
+>    --Mdir build/obj_csr \
+>    --top-module tb_csr_file \
+>    rtl/core/csr_file.sv \
+>    tb/tb_csr_file.sv
+
+.PHONY: csr-test mtval-test
+
+csr-test: $(CSR_SIM)
+>./$(CSR_SIM)
+
+mtval-test: csr-test ecall-test illegal-test
+>@echo "M8.3 MTVAL TESTS PASS"
+
+
 TB := tb/tb_rv32i.sv
 
 
@@ -554,6 +581,7 @@ clean:
 >rm -rf build/obj_uart
 >rm -rf build/obj_ecall
 >rm -rf build/obj_illegal
+>rm -rf build/obj_csr
 >rm -rf build/asm
 >rm -rf build/c
 >rm -rf build/uart

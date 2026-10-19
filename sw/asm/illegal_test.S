@@ -27,28 +27,41 @@ _start:
     li      s3, 2                  # Expected illegal-instruction cause
 
     # 1. All-zero instruction encoding.
+    li      s11, 0                 # Expected mtval at handler entry
     la      s2, bad_opcode
 bad_opcode:
     .word   0x00000000
     addi    s1, s1, 1
     bne     s4, s10, fail
 
-    # 2. MUL s4,s5,s6: M is not implemented by this RV32I core.
+    # 2. Unsupported 16-bit encoding in a 4-byte test slot.
+    # Nonzero high bits must not leak into mtval: expect 0x00000002.
+    li      s11, 2
+    la      s2, bad_short
+bad_short:
+    .word   0xdead0002
+    addi    s1, s1, 1
+    bne     s4, s10, fail
+
+    # 3. MUL s4,s5,s6: M is not implemented by this RV32I core.
     # Raw encoding lets the test retain -march=rv32i_zicsr.
+    li      s11, 0x036a8a33
     la      s2, unsupported_mul
 unsupported_mul:
     .word   0x036a8a33
     addi    s1, s1, 1
     bne     s4, s10, fail
 
-    # 3. Load opcode with unsupported funct3=011, rd=s4, address=0.
+    # 4. Load opcode with unsupported funct3=011, rd=s4, address=0.
+    li      s11, 0x00003a03
     la      s2, bad_load
 bad_load:
     .word   0x00003a03
     addi    s1, s1, 1
     bne     s4, s10, fail
 
-    # 4. Store opcode with unsupported funct3=011, rs2=s7, address=0.
+    # 5. Store opcode with unsupported funct3=011, rs2=s7, address=0.
+    li      s11, 0x01703023
     la      s2, bad_store
 bad_store:
     .word   0x01703023
@@ -56,36 +69,40 @@ bad_store:
     bne     s4, s10, fail
 
     # CSR 0x7c0 is deliberately absent from this core's CSR map.
-    # 5. A read with rs1=x0 must still detect an unimplemented CSR.
+    # 6. A read with rs1=x0 must still detect an unimplemented CSR.
+    li      s11, 0x7c002a73
     la      s2, bad_csr_read
 bad_csr_read:
     csrrs   s4, 0x7c0, zero
     addi    s1, s1, 1
     bne     s4, s10, fail
 
-    # 6. A CSR read/write must not update its destination on failure.
+    # 7. A CSR read/write must not update its destination on failure.
+    li      s11, 0x7c0b9a73
     la      s2, bad_csr_write
 bad_csr_write:
     csrrw   s4, 0x7c0, s7
     addi    s1, s1, 1
     bne     s4, s10, fail
 
-    # 7. Discarding the result with rd=x0 must not suppress the exception.
+    # 8. Discarding the result with rd=x0 must not suppress the exception.
+    li      s11, 0x7c0b9073
     la      s2, bad_csr_write_x0
 bad_csr_write_x0:
     csrrw   zero, 0x7c0, s7
     addi    s1, s1, 1
     bne     s4, s10, fail
 
-    # 8. The shared trap path must still distinguish ECALL from illegal ops.
+    # 9. ECALL must clear the nonzero mtval from the last illegal CSR access.
     li      s3, 11
+    li      s11, 0
     la      s2, ecall_check
 ecall_check:
     ecall
     addi    s1, s1, 1
     bne     s4, s10, fail
 
-    li      t0, 8
+    li      t0, 9
     bne     s0, t0, fail
     bne     s1, t0, fail
 
@@ -114,6 +131,8 @@ trap_handler:
     bne     t1, t2, fail
     csrr    t1, mscratch
     bne     t1, s8, fail
+    csrr    t1, mtval
+    bne     t1, s11, fail
     addi    s0, s0, 1
 
     # Test recovery policy: skip the known 4-byte slot containing the fault.
