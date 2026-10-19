@@ -198,6 +198,136 @@ zicsr-dump: $(ZICSR_DUMP)
 >cat $(ZICSR_DUMP)
 
 
+# ============================================================
+# ECALL / MRET assembly test
+# ============================================================
+
+ECALL_DIR := build/ecall
+
+ECALL_SRC := sw/asm/ecall_test.S
+ECALL_LDS := sw/asm/link.ld
+
+ECALL_ELF  := $(ECALL_DIR)/ecall.elf
+ECALL_BIN  := $(ECALL_DIR)/ecall.bin
+ECALL_HEX  := $(ECALL_DIR)/ecall.hex
+ECALL_DUMP := $(ECALL_DIR)/ecall.dump
+ECALL_MAP  := $(ECALL_DIR)/ecall.map
+
+ECALL_SIM := build/obj_ecall/Vtb_ecall_asm
+
+$(ECALL_ELF): $(ECALL_SRC) $(ECALL_LDS)
+>mkdir -p $(ECALL_DIR)
+>$(RISCV_GCC) \
+>    -march=rv32i_zicsr \
+>    -mabi=ilp32 \
+>    -nostdlib \
+>    -nostartfiles \
+>    -ffreestanding \
+>    -Wl,-T,$(ECALL_LDS) \
+>    -Wl,--no-relax \
+>    -Wl,-Map,$(ECALL_MAP) \
+>    -o $(ECALL_ELF) \
+>    $(ECALL_SRC)
+
+$(ECALL_BIN): $(ECALL_ELF)
+>$(RISCV_OBJCOPY) -O binary $(ECALL_ELF) $(ECALL_BIN)
+
+$(ECALL_HEX): $(ECALL_BIN) scripts/bin2hex.py
+>python3 scripts/bin2hex.py $(ECALL_BIN) $(ECALL_HEX)
+
+$(ECALL_DUMP): $(ECALL_ELF)
+>$(RISCV_OBJDUMP) -d -M no-aliases $(ECALL_ELF) > $(ECALL_DUMP)
+
+$(ECALL_SIM): $(RTL) tb/tb_ecall_asm.sv
+>mkdir -p build/obj_ecall
+>$(VERILATOR) \
+>    --binary \
+>    --timing \
+>    --trace \
+>    -Wall \
+>    -Wno-fatal \
+>    --Mdir build/obj_ecall \
+>    --top-module tb_ecall_asm \
+>    $(RTL) \
+>    tb/tb_ecall_asm.sv
+
+.PHONY: ecall-test ecall-dump ecall-wave
+
+ecall-test: $(ECALL_HEX) $(ECALL_DUMP) $(ECALL_SIM)
+>./$(ECALL_SIM)
+
+ecall-dump: $(ECALL_DUMP)
+>cat $(ECALL_DUMP)
+
+ecall-wave: ecall-test
+>gtkwave $(ECALL_DIR)/ecall.vcd &
+
+
+# ============================================================
+# Illegal instruction / CSR access assembly test
+# ============================================================
+
+ILLEGAL_DIR := build/illegal
+
+ILLEGAL_SRC := sw/asm/illegal_test.S
+ILLEGAL_LDS := sw/asm/link.ld
+
+ILLEGAL_ELF  := $(ILLEGAL_DIR)/illegal.elf
+ILLEGAL_BIN  := $(ILLEGAL_DIR)/illegal.bin
+ILLEGAL_HEX  := $(ILLEGAL_DIR)/illegal.hex
+ILLEGAL_DUMP := $(ILLEGAL_DIR)/illegal.dump
+ILLEGAL_MAP  := $(ILLEGAL_DIR)/illegal.map
+
+ILLEGAL_SIM := build/obj_illegal/Vtb_illegal_asm
+
+$(ILLEGAL_ELF): $(ILLEGAL_SRC) $(ILLEGAL_LDS)
+>mkdir -p $(ILLEGAL_DIR)
+>$(RISCV_GCC) \
+>    -march=rv32i_zicsr \
+>    -mabi=ilp32 \
+>    -nostdlib \
+>    -nostartfiles \
+>    -ffreestanding \
+>    -Wl,-T,$(ILLEGAL_LDS) \
+>    -Wl,--no-relax \
+>    -Wl,-Map,$(ILLEGAL_MAP) \
+>    -o $(ILLEGAL_ELF) \
+>    $(ILLEGAL_SRC)
+
+$(ILLEGAL_BIN): $(ILLEGAL_ELF)
+>$(RISCV_OBJCOPY) -O binary $(ILLEGAL_ELF) $(ILLEGAL_BIN)
+
+$(ILLEGAL_HEX): $(ILLEGAL_BIN) scripts/bin2hex.py
+>python3 scripts/bin2hex.py $(ILLEGAL_BIN) $(ILLEGAL_HEX)
+
+$(ILLEGAL_DUMP): $(ILLEGAL_ELF)
+>$(RISCV_OBJDUMP) -d -M no-aliases $(ILLEGAL_ELF) > $(ILLEGAL_DUMP)
+
+$(ILLEGAL_SIM): $(RTL) tb/tb_illegal_asm.sv
+>mkdir -p build/obj_illegal
+>$(VERILATOR) \
+>    --binary \
+>    --timing \
+>    --trace \
+>    -Wall \
+>    -Wno-fatal \
+>    --Mdir build/obj_illegal \
+>    --top-module tb_illegal_asm \
+>    $(RTL) \
+>    tb/tb_illegal_asm.sv
+
+.PHONY: illegal-test illegal-dump illegal-wave
+
+illegal-test: $(ILLEGAL_HEX) $(ILLEGAL_DUMP) $(ILLEGAL_SIM)
+>./$(ILLEGAL_SIM)
+
+illegal-dump: $(ILLEGAL_DUMP)
+>cat $(ILLEGAL_DUMP)
+
+illegal-wave: illegal-test
+>gtkwave $(ILLEGAL_DIR)/illegal.vcd &
+
+
 TB := tb/tb_rv32i.sv
 
 
@@ -422,6 +552,10 @@ clean:
 >rm -rf build/obj_asm
 >rm -rf build/obj_c
 >rm -rf build/obj_uart
+>rm -rf build/obj_ecall
+>rm -rf build/obj_illegal
 >rm -rf build/asm
 >rm -rf build/c
 >rm -rf build/uart
+>rm -rf build/ecall
+>rm -rf build/illegal

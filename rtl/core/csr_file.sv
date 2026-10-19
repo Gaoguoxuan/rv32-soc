@@ -4,6 +4,12 @@ module csr_file (
 
     input  logic [11:0] csr_addr,
 
+    input logic        trap_enter,
+    input logic [31:0] trap_pc,
+    input logic [31:0] trap_cause,
+
+    input logic        mret_enter,
+
     output logic [31:0] csr_rdata,
     output logic        csr_valid,
     output logic        csr_writable,
@@ -100,6 +106,46 @@ module csr_file (
             mcause   <= 32'b0;
 
             mip      <= 32'b0;
+
+        end
+
+        // ============================================================
+        // Trap entry
+        // ============================================================
+
+        else if (trap_enter) begin
+
+            mepc   <= trap_pc;
+            mcause <= trap_cause;
+
+            // mstatus.MPIE <- mstatus.MIE
+            mstatus[7] <= mstatus[3];
+
+            // mstatus.MIE <- 0
+            mstatus[3] <= 1'b0;
+
+            // MPP <- Machine mode = 2'b11
+            mstatus[12:11] <= 2'b11;
+
+        end
+
+        // ============================================================
+        // MRET
+        // ============================================================
+
+        else if (mret_enter) begin
+
+            // MIE <- MPIE
+            mstatus[3] <= mstatus[7];
+
+            // MPIE <- 1
+            mstatus[7] <= 1'b1;
+
+            // MPP <- lowest supported privilege.
+            //
+            // 我们现在只有 M-mode，没有 U-mode，
+            // M8 阶段先继续保持 Machine。
+            mstatus[12:11] <= 2'b11;
 
         end
 

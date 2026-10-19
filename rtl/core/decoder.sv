@@ -11,7 +11,7 @@ module decoder (
     output logic [2:0]  imm_sel,
 
     output logic [2:0]  load_type,
-    output logic [2:0]  store_type,
+    output logic [1:0]  store_type,
 
     output logic        mem_load,
     output logic        mem_store,
@@ -24,6 +24,9 @@ module decoder (
     output logic       csr_en,
     output logic [1:0] csr_cmd,
     output logic       csr_use_imm,
+
+    output logic       sys_ecall,
+    output logic       sys_mret,
 
     output logic        illegal
 );
@@ -169,6 +172,9 @@ module decoder (
         csr_en      = 1'b0;
         csr_cmd     = CSR_NONE;
         csr_use_imm = 1'b0;
+
+        sys_ecall = 1'b0;
+        sys_mret  = 1'b0;
 
         illegal   = 1'b1;
 
@@ -423,33 +429,36 @@ module decoder (
 
                     wb_sel    = WB_MEM;
 
-                    illegal   = 1'b0;
-
                     case (instr[14:12])
 
                         // LB
                         3'b000: begin
                             load_type = LD_B;
+                            illegal   = 1'b0;
                         end
 
                         // LH
                         3'b001: begin
                             load_type = LD_H;
+                            illegal   = 1'b0;
                         end
 
                         // LW
                         3'b010: begin
                             load_type = LD_W;
+                            illegal   = 1'b0;
                         end
 
                         // LBU
                         3'b100: begin
                             load_type = LD_BU;
+                            illegal   = 1'b0;
                         end
 
                         // LHU
                         3'b101: begin
                             load_type = LD_HU;
+                            illegal   = 1'b0;
                         end
 
                         default: begin
@@ -496,23 +505,24 @@ module decoder (
 
                     mem_store = 1'b1;
 
-                    illegal   = 1'b0;
-
                     case (instr[14:12])
 
                         // SB
                         3'b000: begin
                             store_type = ST_B;
+                            illegal    = 1'b0;
                         end
 
                         // SH
                         3'b001: begin
                             store_type = ST_H;
+                            illegal    = 1'b0;
                         end
 
                         // SW
                         3'b010: begin
                             store_type = ST_W;
+                            illegal    = 1'b0;
                         end
 
                         default: begin
@@ -633,6 +643,27 @@ module decoder (
 
                 case (instr[14:12])
 
+                    3'b000: begin
+                        // ECALL
+                        if (instr == 32'h00000073) begin
+
+                            sys_ecall = 1'b1;
+                            illegal   = 1'b0;
+
+                        end
+
+                        // MRET
+                        else if (instr == 32'h30200073) begin
+
+                            sys_mret = 1'b1;
+                            illegal  = 1'b0;
+
+                        end
+
+                        // EBREAK etc.
+                        // M8.1 暂不实现
+                    end
+
                     // CSRRW
                     3'b001: begin
                         csr_en      = 1'b1;
@@ -711,11 +742,6 @@ module decoder (
                     end
 
 
-                    // funct3=000:
-                    //
-                    // ECALL / EBREAK / MRET
-                    //
-                    // M8 再实现，现在保持 illegal。
                     default: begin
                     end
 

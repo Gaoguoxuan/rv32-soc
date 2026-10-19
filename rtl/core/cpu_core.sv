@@ -117,6 +117,13 @@ module cpu_core (
 
     logic [11:0] csr_addr;
 
+    logic        trap_enter;
+    logic        mret_enter;
+
+    logic [31:0] trap_pc;
+    logic [31:0] trap_cause;
+    logic [31:0] trap_vector;
+
     logic [31:0] csr_rdata;
     logic [31:0] csr_wdata;
     logic [31:0] csr_src;
@@ -146,12 +153,29 @@ module cpu_core (
     assign csr_src = csr_use_imm
                    ? csr_zimm
                    : rs1_data;
+                   
+    //assign trap_enter = sys_ecall && !effective_illegal;
+    assign trap_enter = effective_illegal || sys_ecall;
+    assign mret_enter = sys_mret && !effective_illegal;
+
+    assign trap_vector = mtvec & 32'hFFFF_FFFC;
+
+    assign trap_pc = pc;
+
+    //assign trap_cause = 32'd11;
+    assign trap_cause = effective_illegal ? 32'd2 : 32'd11;
 
     csr_file u_csr_file (
         .clk          (clk),
         .rst          (rst),
 
         .csr_addr     (csr_addr),
+
+        .trap_enter  (trap_enter),
+        .trap_pc     (trap_pc),
+        .trap_cause  (trap_cause),
+
+        .mret_enter  (mret_enter),
 
         .csr_rdata    (csr_rdata),
         .csr_valid    (csr_valid),
@@ -259,6 +283,9 @@ module cpu_core (
     logic       mem_load;
     logic       mem_store;
 
+    logic       sys_ecall;
+    logic       sys_mret;
+
     decoder u_decoder (
         .instr       (instr),
 
@@ -285,6 +312,9 @@ module cpu_core (
         .csr_en      (csr_en),
         .csr_cmd     (csr_cmd),
         .csr_use_imm (csr_use_imm),
+        
+        .sys_ecall   (sys_ecall),
+        .sys_mret    (sys_mret),
 
         .illegal     (illegal)
     );
@@ -471,7 +501,19 @@ module cpu_core (
 
         next_pc = pc + 32'd4;
 
-        if (jump == JUMP_JAL) begin
+        if (trap_enter) begin
+
+            next_pc = trap_vector;
+
+        end
+
+        else if (mret_enter) begin
+
+            next_pc = mepc;
+
+        end
+
+        else if (jump == JUMP_JAL) begin
 
             next_pc = pc + imm_j;
 
