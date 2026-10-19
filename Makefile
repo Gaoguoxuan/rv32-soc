@@ -329,6 +329,71 @@ illegal-wave: illegal-test
 
 
 # ============================================================
+# Misaligned load/store assembly test
+# ============================================================
+
+MISALIGNED_DIR := build/misaligned
+
+MISALIGNED_SRC := sw/asm/misaligned_test.S
+MISALIGNED_LDS := sw/asm/link.ld
+
+MISALIGNED_ELF  := $(MISALIGNED_DIR)/misaligned.elf
+MISALIGNED_BIN  := $(MISALIGNED_DIR)/misaligned.bin
+MISALIGNED_HEX  := $(MISALIGNED_DIR)/misaligned.hex
+MISALIGNED_DUMP := $(MISALIGNED_DIR)/misaligned.dump
+MISALIGNED_MAP  := $(MISALIGNED_DIR)/misaligned.map
+
+MISALIGNED_SIM := build/obj_misaligned/Vtb_misaligned_asm
+
+$(MISALIGNED_ELF): $(MISALIGNED_SRC) $(MISALIGNED_LDS)
+>mkdir -p $(MISALIGNED_DIR)
+>$(RISCV_GCC) \
+>    -march=rv32i_zicsr \
+>    -mabi=ilp32 \
+>    -nostdlib \
+>    -nostartfiles \
+>    -ffreestanding \
+>    -Wl,-T,$(MISALIGNED_LDS) \
+>    -Wl,--no-relax \
+>    -Wl,-Map,$(MISALIGNED_MAP) \
+>    -o $(MISALIGNED_ELF) \
+>    $(MISALIGNED_SRC)
+
+$(MISALIGNED_BIN): $(MISALIGNED_ELF)
+>$(RISCV_OBJCOPY) -O binary $(MISALIGNED_ELF) $(MISALIGNED_BIN)
+
+$(MISALIGNED_HEX): $(MISALIGNED_BIN) scripts/bin2hex.py
+>python3 scripts/bin2hex.py $(MISALIGNED_BIN) $(MISALIGNED_HEX)
+
+$(MISALIGNED_DUMP): $(MISALIGNED_ELF)
+>$(RISCV_OBJDUMP) -d -M no-aliases $(MISALIGNED_ELF) > $(MISALIGNED_DUMP)
+
+$(MISALIGNED_SIM): $(RTL) tb/tb_misaligned_asm.sv
+>mkdir -p build/obj_misaligned
+>$(VERILATOR) \
+>    --binary \
+>    --timing \
+>    --trace \
+>    -Wall \
+>    -Wno-fatal \
+>    --Mdir build/obj_misaligned \
+>    --top-module tb_misaligned_asm \
+>    $(RTL) \
+>    tb/tb_misaligned_asm.sv
+
+.PHONY: misaligned-test misaligned-dump misaligned-wave
+
+misaligned-test: $(MISALIGNED_HEX) $(MISALIGNED_DUMP) $(MISALIGNED_SIM)
+>./$(MISALIGNED_SIM)
+
+misaligned-dump: $(MISALIGNED_DUMP)
+>cat $(MISALIGNED_DUMP)
+
+misaligned-wave: misaligned-test
+>gtkwave $(MISALIGNED_DIR)/misaligned.vcd &
+
+
+# ============================================================
 # CSR unit test and M8.3 mtval checks
 # ============================================================
 
@@ -582,8 +647,10 @@ clean:
 >rm -rf build/obj_ecall
 >rm -rf build/obj_illegal
 >rm -rf build/obj_csr
+>rm -rf build/obj_misaligned
 >rm -rf build/asm
 >rm -rf build/c
 >rm -rf build/uart
 >rm -rf build/ecall
 >rm -rf build/illegal
+>rm -rf build/misaligned

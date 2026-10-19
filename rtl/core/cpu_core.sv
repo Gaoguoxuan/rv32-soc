@@ -102,6 +102,13 @@ module cpu_core (
 
     logic        lsu_misaligned;
 
+    logic       load_misaligned;
+    logic       store_misaligned;
+
+    assign load_misaligned = mem_load && lsu_misaligned && !effective_illegal;
+
+    assign store_misaligned = mem_store && lsu_misaligned && !effective_illegal;
+
     //============================
     // CSR signals
     //============================
@@ -158,7 +165,7 @@ module cpu_core (
                    : rs1_data;
                    
     //assign trap_enter = sys_ecall && !effective_illegal;
-    assign trap_enter = effective_illegal || sys_ecall;
+    assign trap_enter = effective_illegal || sys_ecall || load_misaligned || store_misaligned;
     assign mret_enter = sys_mret && !effective_illegal;
 
     assign trap_vector = mtvec & 32'hFFFF_FFFC;
@@ -166,11 +173,30 @@ module cpu_core (
     assign trap_pc = pc;
 
     //assign trap_cause = 32'd11;
-    assign trap_cause = effective_illegal ? 32'd2 : 32'd11;
+    //assign trap_cause = effective_illegal ? 32'd2 : 32'd11;
 
-    assign trap_tval = !effective_illegal     ? 32'b0 : 
-                        (instr[1:0] == 2'b11) ? instr : 
-                                                {16'b0, instr[15:0]};
+    //assign trap_tval = !effective_illegal     ? 32'b0 :  (instr[1:0] == 2'b11) ? instr :  {16'b0, instr[15:0]};
+
+    always_comb begin
+    // 默认对应 M-mode ECALL
+        trap_cause = 32'd11;
+        trap_tval  = 32'b0;
+
+        if (effective_illegal) begin
+            trap_cause = 32'd2;
+            trap_tval  = (instr[1:0] == 2'b11)
+                    ? instr
+                    : {16'b0, instr[15:0]};
+        end
+        else if (load_misaligned) begin
+            trap_cause = 32'd4;
+            trap_tval  = mem_addr;
+        end
+        else if (store_misaligned) begin
+            trap_cause = 32'd6;
+            trap_tval  = mem_addr;
+        end
+    end
 
     csr_file u_csr_file (
         .clk          (clk),
