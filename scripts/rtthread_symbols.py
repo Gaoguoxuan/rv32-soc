@@ -45,6 +45,20 @@ def main():
                  "rt_interrupt_from_thread", "rt_interrupt_to_thread",
                  "rt_thread_switch_interrupt_flag", "rt_thread_init", "rt_thread_startup")
         strong = names[:11]
+    elif mode == "delay":
+        names = ("rt_hw_trap_entry", "rt_hw_trap_dispatch", "rt_hw_context_restore",
+                 "rt_hw_context_switch_to", "rt_hw_context_switch",
+                 "rt_hw_context_switch_interrupt", "rt_hw_tick_init", "rt_hw_tick_rearm",
+                 "rt_interrupt_enter", "rt_interrupt_leave", "rt_tick_increase", "rt_tick",
+                 "delay_entry", "finish_entry", "_thread_exit", "thread_locations",
+                 "stack_a", "stack_b", "stack_check", "arguments", "wake_count",
+                 "sleep_tick", "wake_tick", "normal_returns", "cleanup_mask", "idle_hits",
+                 "data_cookie", "stack_guard", "__stack_bottom", "__stack_top",
+                 "rt_current_thread", "rt_interrupt_nest", "rt_interrupt_from_thread",
+                 "rt_interrupt_to_thread", "rt_thread_switch_interrupt_flag", "rt_thread_init",
+                 "rt_thread_startup", "rt_thread_idle_entry", "rt_thread_stack", "idle_hook",
+                 "thread_cleanup", "rt_thread_delay", "_thread_timeout")
+        strong = names[:11] + ("rt_thread_delay",)
     else:
         raise SystemExit(f"Unknown RT-Thread test mode: {mode}")
     symbols = {}

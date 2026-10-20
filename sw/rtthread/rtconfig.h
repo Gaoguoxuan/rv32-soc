@@ -9,6 +9,7 @@
 
 /* 控制台 */
 #define RT_USING_CONSOLE
+#define RT_USING_IDLE_HOOK
 #define RT_CONSOLEBUF_SIZE        128
 
 /* 开启断言，方便定位移植错误 */
