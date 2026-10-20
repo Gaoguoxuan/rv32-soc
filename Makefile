@@ -749,6 +749,73 @@ context-wave: context-test
 >gtkwave $(CONTEXT_DIR)/context.vcd &
 
 
+# ============================================================
+# M10.3 Timer-preempted full contexts, compiled at O0 and O2
+# ============================================================
+
+PREEMPT_DIR := build/preempt
+PREEMPT_O2_DIR := build/preempt_o2
+PREEMPT_SOURCES := sw/uart/start.S sw/preempt/trap.S sw/preempt/main.c
+PREEMPT_DEPS := $(PREEMPT_SOURCES) sw/preempt/trap_frame.h sw/preempt/link.ld
+PREEMPT_FLAGS := $(filter-out -march=% -O0,$(UART_CFLAGS)) \
+    -march=rv32i_zicsr -Wall -Wextra -Werror -fstack-usage
+PREEMPT_SIM := build/obj_preempt/Vtb_soc_preempt
+
+$(PREEMPT_DIR)/preempt.elf: $(PREEMPT_DEPS)
+>mkdir -p $(PREEMPT_DIR)
+>$(RISCV_GCC) $(PREEMPT_FLAGS) -O0 -Wl,-T,sw/preempt/link.ld -Wl,--no-relax \
+>    -Wl,-Map,$(PREEMPT_DIR)/preempt.map -o $@ $(PREEMPT_SOURCES)
+
+$(PREEMPT_O2_DIR)/preempt.elf: $(PREEMPT_DEPS)
+>mkdir -p $(PREEMPT_O2_DIR)
+>$(RISCV_GCC) $(PREEMPT_FLAGS) -O2 -Wl,-T,sw/preempt/link.ld -Wl,--no-relax \
+>    -Wl,-Map,$(PREEMPT_O2_DIR)/preempt.map -o $@ $(PREEMPT_SOURCES)
+
+$(PREEMPT_DIR)/preempt.bin: $(PREEMPT_DIR)/preempt.elf
+>$(RISCV_OBJCOPY) -O binary $< $@
+
+$(PREEMPT_O2_DIR)/preempt.bin: $(PREEMPT_O2_DIR)/preempt.elf
+>$(RISCV_OBJCOPY) -O binary $< $@
+
+$(PREEMPT_DIR)/preempt.hex: $(PREEMPT_DIR)/preempt.bin scripts/bin2hex.py
+>python3 scripts/bin2hex.py $< $@
+
+$(PREEMPT_O2_DIR)/preempt.hex: $(PREEMPT_O2_DIR)/preempt.bin scripts/bin2hex.py
+>python3 scripts/bin2hex.py $< $@
+
+$(PREEMPT_DIR)/preempt.symbols.hex: $(PREEMPT_DIR)/preempt.elf scripts/preempt_symbols.py
+>python3 scripts/preempt_symbols.py $(RISCV_PREFIX)nm $< $@
+
+$(PREEMPT_O2_DIR)/preempt.symbols.hex: $(PREEMPT_O2_DIR)/preempt.elf scripts/preempt_symbols.py
+>python3 scripts/preempt_symbols.py $(RISCV_PREFIX)nm $< $@
+
+$(PREEMPT_DIR)/preempt.dump: $(PREEMPT_DIR)/preempt.elf
+>$(RISCV_OBJDUMP) -d -M no-aliases $< > $@
+
+$(PREEMPT_O2_DIR)/preempt.dump: $(PREEMPT_O2_DIR)/preempt.elf
+>$(RISCV_OBJDUMP) -d -M no-aliases $< > $@
+
+$(PREEMPT_SIM): $(RTL) $(SOC_RTL) tb/tb_soc_preempt.sv
+>mkdir -p build/obj_preempt
+>$(VERILATOR) --binary --timing --trace -Wall -Wno-fatal \
+>    -Werror-IMPLICIT -Werror-UNDRIVEN --Mdir build/obj_preempt \
+>    --top-module tb_soc_preempt $(RTL) $(SOC_RTL) tb/tb_soc_preempt.sv
+
+.PHONY: preempt-test preempt-dump preempt-wave
+
+preempt-test: $(PREEMPT_DIR)/preempt.hex $(PREEMPT_DIR)/preempt.symbols.hex $(PREEMPT_DIR)/preempt.dump \
+              $(PREEMPT_O2_DIR)/preempt.hex $(PREEMPT_O2_DIR)/preempt.symbols.hex $(PREEMPT_O2_DIR)/preempt.dump $(PREEMPT_SIM)
+>./$(PREEMPT_SIM) +image=$(PREEMPT_DIR)/preempt.hex +symbols=$(PREEMPT_DIR)/preempt.symbols.hex +wave=$(PREEMPT_DIR)/preempt.vcd
+>./$(PREEMPT_SIM) +image=$(PREEMPT_O2_DIR)/preempt.hex +symbols=$(PREEMPT_O2_DIR)/preempt.symbols.hex +wave=$(PREEMPT_O2_DIR)/preempt.vcd
+>@echo "M10.3 PREEMPT O0/O2 CHECKS PASS"
+
+preempt-dump: $(PREEMPT_DIR)/preempt.dump
+>cat $(PREEMPT_DIR)/preempt.dump
+
+preempt-wave: preempt-test
+>gtkwave $(PREEMPT_DIR)/preempt.vcd &
+
+
 TB := tb/tb_rv32i.sv
 
 
