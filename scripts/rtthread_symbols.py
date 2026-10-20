@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the linked firmware ISA and export symbols for the console monitor."""
+"""Check the linked firmware ISA and export console/start-test symbols."""
 
 import re
 import subprocess
@@ -9,9 +9,19 @@ from pathlib import Path
 
 def main():
     prefix, elf, destination = sys.argv[1:4]
-    names = ("rt_show_version", "rt_kprintf", "rt_hw_console_output",
-             "rt_hw_interrupt_disable", "rt_hw_interrupt_enable", "data_cookie",
-             "test_stage", "stack_guard", "__stack_bottom", "__stack_top")
+    mode = sys.argv[4] if len(sys.argv) > 4 else "console"
+    if mode == "console":
+        names = ("rt_show_version", "rt_kprintf", "rt_hw_console_output",
+                 "rt_hw_interrupt_disable", "rt_hw_interrupt_enable", "data_cookie",
+                 "test_stage", "stack_guard", "__stack_bottom", "__stack_top")
+        strong = ("rt_hw_console_output", "rt_hw_interrupt_disable", "rt_hw_interrupt_enable")
+    elif mode == "start":
+        names = ("rt_hw_stack_init", "rt_hw_context_switch_to", "start_entry", "start_exit",
+                 "probe", "stack_a", "stack_b", "arguments", "current", "entries", "exits",
+                 "data_cookie", "stack_guard", "__stack_bottom", "__stack_top")
+        strong = ("rt_hw_stack_init", "rt_hw_context_switch_to")
+    else:
+        raise SystemExit(f"Unknown RT-Thread test mode: {mode}")
     symbols = {}
     types = {}
     for line in subprocess.check_output([prefix + "nm", "-n", elf], text=True).splitlines():
@@ -22,7 +32,7 @@ def main():
     missing = set(names) - symbols.keys()
     if missing:
         raise SystemExit(f"Missing RT-Thread test symbols: {sorted(missing)}")
-    for name in ("rt_hw_console_output", "rt_hw_interrupt_disable", "rt_hw_interrupt_enable"):
+    for name in strong:
         if types[name] != "T":
             raise SystemExit(f"Expected a strong port implementation: {name} ({types[name]})")
 
@@ -43,7 +53,7 @@ def main():
     if count == 0:
         raise SystemExit("No executable instructions found")
     Path(destination).write_text("".join(f"{symbols[name]:08x}\n" for name in names))
-    print(f"[PASS] {elf}: {count} RV32I/Zicsr instructions; strong console/IRQ ports")
+    print(f"[PASS] {elf}: {count} RV32I/Zicsr instructions; strong port implementations")
 
 
 if __name__ == "__main__":
