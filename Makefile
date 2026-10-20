@@ -884,6 +884,105 @@ irq-wave: irq-test
 >gtkwave $(IRQ_DIR)/irq.vcd &
 
 
+# ============================================================
+# M11.1 Pinned RT-Thread kernel services and board console
+# ============================================================
+
+RTTHREAD_ROOT := third_party/rt-thread
+RTTHREAD_DIR := build/rtthread
+RTTHREAD_O2_DIR := build/rtthread_o2
+RTTHREAD_OBJECTS := start.o main.o cpuport.o board.o kservice.o
+RTTHREAD_DEPS := sw/rtthread/rtconfig.h sw/common/irq.h \
+    $(wildcard $(RTTHREAD_ROOT)/include/*.h)
+RTTHREAD_FLAGS := $(filter-out -march=% -O0,$(UART_CFLAGS)) \
+    -march=rv32i_zicsr -Wall -Wextra -Werror -fstack-usage \
+    -ffunction-sections -fdata-sections \
+    -Isw/rtthread -I$(RTTHREAD_ROOT)/include
+# Upstream supplies optional weak hooks with intentionally unused parameters.
+RTTHREAD_UPSTREAM_FLAGS := $(filter-out -Wextra,$(RTTHREAD_FLAGS))
+RTTHREAD_SIM := build/obj_rtthread/Vtb_soc_rtthread
+
+$(RTTHREAD_DIR)/%.o: sw/rtthread/%.c $(RTTHREAD_DEPS)
+>mkdir -p $(RTTHREAD_DIR)
+>$(RISCV_GCC) $(RTTHREAD_FLAGS) -O0 -c $< -o $@
+
+$(RTTHREAD_O2_DIR)/%.o: sw/rtthread/%.c $(RTTHREAD_DEPS)
+>mkdir -p $(RTTHREAD_O2_DIR)
+>$(RISCV_GCC) $(RTTHREAD_FLAGS) -O2 -c $< -o $@
+
+$(RTTHREAD_DIR)/start.o: sw/uart/start.S
+>mkdir -p $(RTTHREAD_DIR)
+>$(RISCV_GCC) $(RTTHREAD_FLAGS) -O0 -c $< -o $@
+
+$(RTTHREAD_O2_DIR)/start.o: sw/uart/start.S
+>mkdir -p $(RTTHREAD_O2_DIR)
+>$(RISCV_GCC) $(RTTHREAD_FLAGS) -O2 -c $< -o $@
+
+$(RTTHREAD_DIR)/kservice.o: $(RTTHREAD_ROOT)/src/kservice.c $(RTTHREAD_DEPS)
+>mkdir -p $(RTTHREAD_DIR)
+>$(RISCV_GCC) $(RTTHREAD_UPSTREAM_FLAGS) -O0 -c $< -o $@
+
+$(RTTHREAD_O2_DIR)/kservice.o: $(RTTHREAD_ROOT)/src/kservice.c $(RTTHREAD_DEPS)
+>mkdir -p $(RTTHREAD_O2_DIR)
+>$(RISCV_GCC) $(RTTHREAD_UPSTREAM_FLAGS) -O2 -c $< -o $@
+
+$(RTTHREAD_DIR)/rtthread.elf: $(addprefix $(RTTHREAD_DIR)/,$(RTTHREAD_OBJECTS)) sw/rtthread/link.ld
+>$(RISCV_GCC) $(RTTHREAD_FLAGS) -O0 -Wl,-T,sw/rtthread/link.ld -Wl,--no-relax \
+>    -Wl,--gc-sections -Wl,-Map,$(RTTHREAD_DIR)/rtthread.map -o $@ $(filter %.o,$^) -lgcc
+
+$(RTTHREAD_O2_DIR)/rtthread.elf: $(addprefix $(RTTHREAD_O2_DIR)/,$(RTTHREAD_OBJECTS)) sw/rtthread/link.ld
+>$(RISCV_GCC) $(RTTHREAD_FLAGS) -O2 -Wl,-T,sw/rtthread/link.ld -Wl,--no-relax \
+>    -Wl,--gc-sections -Wl,-Map,$(RTTHREAD_O2_DIR)/rtthread.map -o $@ $(filter %.o,$^) -lgcc
+
+$(RTTHREAD_DIR)/rtthread.bin: $(RTTHREAD_DIR)/rtthread.elf
+>$(RISCV_OBJCOPY) -O binary $< $@
+
+$(RTTHREAD_O2_DIR)/rtthread.bin: $(RTTHREAD_O2_DIR)/rtthread.elf
+>$(RISCV_OBJCOPY) -O binary $< $@
+
+$(RTTHREAD_DIR)/rtthread.hex: $(RTTHREAD_DIR)/rtthread.bin scripts/bin2hex.py
+>python3 scripts/bin2hex.py $< $@
+
+$(RTTHREAD_O2_DIR)/rtthread.hex: $(RTTHREAD_O2_DIR)/rtthread.bin scripts/bin2hex.py
+>python3 scripts/bin2hex.py $< $@
+
+$(RTTHREAD_DIR)/rtthread.symbols.hex: $(RTTHREAD_DIR)/rtthread.elf scripts/rtthread_symbols.py
+>python3 scripts/rtthread_symbols.py $(RISCV_PREFIX) $< $@
+
+$(RTTHREAD_O2_DIR)/rtthread.symbols.hex: $(RTTHREAD_O2_DIR)/rtthread.elf scripts/rtthread_symbols.py
+>python3 scripts/rtthread_symbols.py $(RISCV_PREFIX) $< $@
+
+$(RTTHREAD_DIR)/rtthread.dump: $(RTTHREAD_DIR)/rtthread.elf
+>$(RISCV_OBJDUMP) -d -M no-aliases $< > $@
+
+$(RTTHREAD_O2_DIR)/rtthread.dump: $(RTTHREAD_O2_DIR)/rtthread.elf
+>$(RISCV_OBJDUMP) -d -M no-aliases $< > $@
+
+$(RTTHREAD_SIM): $(RTL) $(SOC_RTL) tb/tb_soc_rtthread.sv
+>mkdir -p build/obj_rtthread
+>$(VERILATOR) --binary --timing --trace -Wall -Wno-fatal \
+>    -Werror-IMPLICIT -Werror-UNDRIVEN --Mdir build/obj_rtthread \
+>    --top-module tb_soc_rtthread $(RTL) $(SOC_RTL) tb/tb_soc_rtthread.sv
+
+.PHONY: rtthread-test rtthread-vendor-check rtthread-dump rtthread-wave
+
+rtthread-vendor-check:
+>cd $(RTTHREAD_ROOT) && sha256sum --quiet -c SHA256SUMS
+
+rtthread-test: rtthread-vendor-check \
+               $(RTTHREAD_DIR)/rtthread.hex $(RTTHREAD_DIR)/rtthread.symbols.hex $(RTTHREAD_DIR)/rtthread.dump \
+               $(RTTHREAD_O2_DIR)/rtthread.hex $(RTTHREAD_O2_DIR)/rtthread.symbols.hex $(RTTHREAD_O2_DIR)/rtthread.dump $(RTTHREAD_SIM)
+>./$(RTTHREAD_SIM) +image=$(RTTHREAD_DIR)/rtthread.hex +symbols=$(RTTHREAD_DIR)/rtthread.symbols.hex +wave=$(RTTHREAD_DIR)/rtthread.vcd
+>./$(RTTHREAD_SIM) +image=$(RTTHREAD_O2_DIR)/rtthread.hex +symbols=$(RTTHREAD_O2_DIR)/rtthread.symbols.hex +wave=$(RTTHREAD_O2_DIR)/rtthread.vcd
+>@echo "M11.1 RT-THREAD CONSOLE O0/O2 CHECKS PASS"
+
+rtthread-dump: $(RTTHREAD_DIR)/rtthread.dump
+>cat $(RTTHREAD_DIR)/rtthread.dump
+
+rtthread-wave: rtthread-test
+>gtkwave $(RTTHREAD_DIR)/rtthread.vcd &
+
+
 TB := tb/tb_rv32i.sv
 
 
