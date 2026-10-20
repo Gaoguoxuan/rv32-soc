@@ -1,4 +1,5 @@
 #include "trap_frame.h"
+#include "../common/irq.h"
 
 #define MMIO32(address) (*(volatile uint32_t *)(uintptr_t)(address))
 #define UART_TXDATA    MMIO32(0x20000000u)
@@ -81,14 +82,18 @@ static void check_guards(void)
 void thread_exit(void) __attribute__((noreturn, noinline));
 void thread_exit(void)
 {
-    /* Publish the shared exit count and done flag as one critical section. */
-    __asm__ volatile ("csrc mstatus, %0" :: "r"(8u) : "memory");
-    if (current < 1u || current > 2u || threads[current - 1u].done)
+    irq_state_t state = irq_save();
+
+    if (current < 1u || current > 2u ||
+        threads[current - 1u].done)
         fail("THREAD EXIT FAIL\n");
+
     exits++;
     threads[current - 1u].done = 1;
-    __asm__ volatile ("csrs mstatus, %0" :: "r"(8u) : "memory");
-    /* The next timer interrupt removes this finished thread from execution. */
+
+    irq_restore(state);
+
+    /* 等待下一次定时器中断切走。 */
     while (1) {
     }
 }

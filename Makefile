@@ -756,7 +756,8 @@ context-wave: context-test
 PREEMPT_DIR := build/preempt
 PREEMPT_O2_DIR := build/preempt_o2
 PREEMPT_SOURCES := sw/uart/start.S sw/preempt/trap.S sw/preempt/main.c
-PREEMPT_DEPS := $(PREEMPT_SOURCES) sw/preempt/trap_frame.h sw/preempt/link.ld
+PREEMPT_DEPS := $(PREEMPT_SOURCES) sw/preempt/trap_frame.h \
+    sw/preempt/link.ld sw/common/irq.h
 PREEMPT_FLAGS := $(filter-out -march=% -O0,$(UART_CFLAGS)) \
     -march=rv32i_zicsr -Wall -Wextra -Werror -fstack-usage
 PREEMPT_SIM := build/obj_preempt/Vtb_soc_preempt
@@ -814,6 +815,73 @@ preempt-dump: $(PREEMPT_DIR)/preempt.dump
 
 preempt-wave: preempt-test
 >gtkwave $(PREEMPT_DIR)/preempt.vcd &
+
+
+# ============================================================
+# M10.4 Nested interrupt save/restore, compiled at O0 and O2
+# ============================================================
+
+IRQ_DIR := build/irq
+IRQ_O2_DIR := build/irq_o2
+IRQ_SOURCES := sw/uart/start.S sw/timer_irq/trap.S sw/irq/main.c
+IRQ_DEPS := $(IRQ_SOURCES) sw/common/irq.h sw/irq/link.ld
+IRQ_FLAGS := $(filter-out -march=% -O0,$(UART_CFLAGS)) \
+    -march=rv32i_zicsr -Wall -Wextra -Werror -fstack-usage
+IRQ_SIM := build/obj_irq/Vtb_soc_irq
+
+$(IRQ_DIR)/irq.elf: $(IRQ_DEPS)
+>mkdir -p $(IRQ_DIR)
+>$(RISCV_GCC) $(IRQ_FLAGS) -O0 -Wl,-T,sw/irq/link.ld -Wl,--no-relax \
+>    -Wl,-Map,$(IRQ_DIR)/irq.map -o $@ $(IRQ_SOURCES)
+
+$(IRQ_O2_DIR)/irq.elf: $(IRQ_DEPS)
+>mkdir -p $(IRQ_O2_DIR)
+>$(RISCV_GCC) $(IRQ_FLAGS) -O2 -Wl,-T,sw/irq/link.ld -Wl,--no-relax \
+>    -Wl,-Map,$(IRQ_O2_DIR)/irq.map -o $@ $(IRQ_SOURCES)
+
+$(IRQ_DIR)/irq.bin: $(IRQ_DIR)/irq.elf
+>$(RISCV_OBJCOPY) -O binary $< $@
+
+$(IRQ_O2_DIR)/irq.bin: $(IRQ_O2_DIR)/irq.elf
+>$(RISCV_OBJCOPY) -O binary $< $@
+
+$(IRQ_DIR)/irq.hex: $(IRQ_DIR)/irq.bin scripts/bin2hex.py
+>python3 scripts/bin2hex.py $< $@
+
+$(IRQ_O2_DIR)/irq.hex: $(IRQ_O2_DIR)/irq.bin scripts/bin2hex.py
+>python3 scripts/bin2hex.py $< $@
+
+$(IRQ_DIR)/irq.symbols.hex: $(IRQ_DIR)/irq.elf scripts/irq_symbols.py
+>python3 scripts/irq_symbols.py $(RISCV_PREFIX)nm $< $@
+
+$(IRQ_O2_DIR)/irq.symbols.hex: $(IRQ_O2_DIR)/irq.elf scripts/irq_symbols.py
+>python3 scripts/irq_symbols.py $(RISCV_PREFIX)nm $< $@
+
+$(IRQ_DIR)/irq.dump: $(IRQ_DIR)/irq.elf
+>$(RISCV_OBJDUMP) -d -M no-aliases $< > $@
+
+$(IRQ_O2_DIR)/irq.dump: $(IRQ_O2_DIR)/irq.elf
+>$(RISCV_OBJDUMP) -d -M no-aliases $< > $@
+
+$(IRQ_SIM): $(RTL) $(SOC_RTL) tb/tb_soc_irq.sv
+>mkdir -p build/obj_irq
+>$(VERILATOR) --binary --timing --trace -Wall -Wno-fatal \
+>    -Werror-IMPLICIT -Werror-UNDRIVEN --Mdir build/obj_irq \
+>    --top-module tb_soc_irq $(RTL) $(SOC_RTL) tb/tb_soc_irq.sv
+
+.PHONY: irq-test irq-dump irq-wave
+
+irq-test: $(IRQ_DIR)/irq.hex $(IRQ_DIR)/irq.symbols.hex $(IRQ_DIR)/irq.dump \
+          $(IRQ_O2_DIR)/irq.hex $(IRQ_O2_DIR)/irq.symbols.hex $(IRQ_O2_DIR)/irq.dump $(IRQ_SIM)
+>./$(IRQ_SIM) +image=$(IRQ_DIR)/irq.hex +symbols=$(IRQ_DIR)/irq.symbols.hex +wave=$(IRQ_DIR)/irq.vcd
+>./$(IRQ_SIM) +image=$(IRQ_O2_DIR)/irq.hex +symbols=$(IRQ_O2_DIR)/irq.symbols.hex +wave=$(IRQ_O2_DIR)/irq.vcd
+>@echo "M10.4 IRQ API O0/O2 CHECKS PASS"
+
+irq-dump: $(IRQ_DIR)/irq.dump
+>cat $(IRQ_DIR)/irq.dump
+
+irq-wave: irq-test
+>gtkwave $(IRQ_DIR)/irq.vcd &
 
 
 TB := tb/tb_rv32i.sv
