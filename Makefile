@@ -683,6 +683,72 @@ soc-memory-wave: soc-memory-test
 >gtkwave $(SOC_MEMORY_DIR)/soc_memory.vcd &
 
 
+# ============================================================
+# M10.2 Cooperative contexts, independently compiled at O0 and O2
+# ============================================================
+
+CONTEXT_DIR := build/context
+CONTEXT_O2_DIR := build/context_o2
+CONTEXT_SOURCES := sw/uart/start.S sw/context/switch.S sw/context/main.c
+CONTEXT_DEPS := $(CONTEXT_SOURCES) sw/context/context.h sw/context/link.ld
+CONTEXT_FLAGS := $(filter-out -O0,$(UART_CFLAGS)) -Wall -Wextra -fstack-usage
+CONTEXT_SIM := build/obj_context/Vtb_soc_context
+
+$(CONTEXT_DIR)/context.elf: $(CONTEXT_DEPS)
+>mkdir -p $(CONTEXT_DIR)
+>$(RISCV_GCC) $(CONTEXT_FLAGS) -O0 -Wl,-T,sw/context/link.ld -Wl,--no-relax \
+>    -Wl,-Map,$(CONTEXT_DIR)/context.map -o $@ $(CONTEXT_SOURCES)
+
+$(CONTEXT_O2_DIR)/context.elf: $(CONTEXT_DEPS)
+>mkdir -p $(CONTEXT_O2_DIR)
+>$(RISCV_GCC) $(CONTEXT_FLAGS) -O2 -Wl,-T,sw/context/link.ld -Wl,--no-relax \
+>    -Wl,-Map,$(CONTEXT_O2_DIR)/context.map -o $@ $(CONTEXT_SOURCES)
+
+$(CONTEXT_DIR)/context.bin: $(CONTEXT_DIR)/context.elf
+>$(RISCV_OBJCOPY) -O binary $< $@
+
+$(CONTEXT_O2_DIR)/context.bin: $(CONTEXT_O2_DIR)/context.elf
+>$(RISCV_OBJCOPY) -O binary $< $@
+
+$(CONTEXT_DIR)/context.hex: $(CONTEXT_DIR)/context.bin scripts/bin2hex.py
+>python3 scripts/bin2hex.py $< $@
+
+$(CONTEXT_O2_DIR)/context.hex: $(CONTEXT_O2_DIR)/context.bin scripts/bin2hex.py
+>python3 scripts/bin2hex.py $< $@
+
+$(CONTEXT_DIR)/context.symbols.hex: $(CONTEXT_DIR)/context.elf scripts/context_symbols.py
+>python3 scripts/context_symbols.py $(RISCV_PREFIX)nm $< $@
+
+$(CONTEXT_O2_DIR)/context.symbols.hex: $(CONTEXT_O2_DIR)/context.elf scripts/context_symbols.py
+>python3 scripts/context_symbols.py $(RISCV_PREFIX)nm $< $@
+
+$(CONTEXT_DIR)/context.dump: $(CONTEXT_DIR)/context.elf
+>$(RISCV_OBJDUMP) -d -M no-aliases $< > $@
+
+$(CONTEXT_O2_DIR)/context.dump: $(CONTEXT_O2_DIR)/context.elf
+>$(RISCV_OBJDUMP) -d -M no-aliases $< > $@
+
+$(CONTEXT_SIM): $(RTL) $(SOC_RTL) tb/tb_soc_context.sv
+>mkdir -p build/obj_context
+>$(VERILATOR) --binary --timing --trace -Wall -Wno-fatal \
+>    -Werror-IMPLICIT -Werror-UNDRIVEN --Mdir build/obj_context \
+>    --top-module tb_soc_context $(RTL) $(SOC_RTL) tb/tb_soc_context.sv
+
+.PHONY: context-test context-dump context-wave
+
+context-test: $(CONTEXT_DIR)/context.hex $(CONTEXT_DIR)/context.symbols.hex $(CONTEXT_DIR)/context.dump \
+              $(CONTEXT_O2_DIR)/context.hex $(CONTEXT_O2_DIR)/context.symbols.hex $(CONTEXT_O2_DIR)/context.dump $(CONTEXT_SIM)
+>./$(CONTEXT_SIM) +image=$(CONTEXT_DIR)/context.hex +symbols=$(CONTEXT_DIR)/context.symbols.hex +wave=$(CONTEXT_DIR)/context.vcd
+>./$(CONTEXT_SIM) +image=$(CONTEXT_O2_DIR)/context.hex +symbols=$(CONTEXT_O2_DIR)/context.symbols.hex +wave=$(CONTEXT_O2_DIR)/context.vcd
+>@echo "M10.2 CONTEXT O0/O2 CHECKS PASS"
+
+context-dump: $(CONTEXT_DIR)/context.dump
+>cat $(CONTEXT_DIR)/context.dump
+
+context-wave: context-test
+>gtkwave $(CONTEXT_DIR)/context.vcd &
+
+
 TB := tb/tb_rv32i.sv
 
 
@@ -919,6 +985,7 @@ clean:
 >rm -rf build/obj_memory_small
 >rm -rf build/obj_memory_bad_rom
 >rm -rf build/obj_memory_bad_ram
+>rm -rf build/obj_context
 >rm -rf build/asm
 >rm -rf build/c
 >rm -rf build/uart
@@ -930,3 +997,5 @@ clean:
 >rm -rf build/cpu_timer_irq
 >rm -rf build/soc_timer_irq
 >rm -rf build/soc_memory
+>rm -rf build/context
+>rm -rf build/context_o2
