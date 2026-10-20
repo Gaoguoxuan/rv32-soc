@@ -525,6 +525,37 @@ mtip-test: csr-test soc-timer-test
 >@echo "M9.3.1 MTIP CHECKS PASS"
 
 
+# ============================================================
+# M9.3.2 CPU machine timer interrupt arbitration and precise traps
+# ============================================================
+
+CPU_TIMER_IRQ_SIM := build/obj_cpu_timer_irq/Vtb_cpu_timer_irq
+
+$(CPU_TIMER_IRQ_SIM): $(RTL) tb/tb_cpu_timer_irq.sv
+>mkdir -p build/obj_cpu_timer_irq
+>$(VERILATOR) \
+>    --binary \
+>    --timing \
+>    --trace \
+>    -Wall \
+>    -Wno-fatal \
+>    --Mdir build/obj_cpu_timer_irq \
+>    -Werror-IMPLICIT \
+>    -Werror-UNDRIVEN \
+>    --top-module tb_cpu_timer_irq \
+>    $(RTL) \
+>    tb/tb_cpu_timer_irq.sv
+
+.PHONY: timer-irq-test timer-irq-wave
+
+timer-irq-test: $(CPU_TIMER_IRQ_SIM)
+>mkdir -p build/cpu_timer_irq
+>./$(CPU_TIMER_IRQ_SIM)
+
+timer-irq-wave: timer-irq-test
+>gtkwave build/cpu_timer_irq/cpu_timer_irq.vcd &
+
+
 TB := tb/tb_rv32i.sv
 
 
@@ -755,6 +786,7 @@ clean:
 >rm -rf build/obj_misaligned
 >rm -rf build/obj_timer
 >rm -rf build/obj_soc_timer
+>rm -rf build/obj_cpu_timer_irq
 >rm -rf build/asm
 >rm -rf build/c
 >rm -rf build/uart
@@ -763,3 +795,4 @@ clean:
 >rm -rf build/misaligned
 >rm -rf build/timer
 >rm -rf build/soc_timer
+>rm -rf build/cpu_timer_irq

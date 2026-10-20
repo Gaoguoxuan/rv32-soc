@@ -127,6 +127,9 @@ module cpu_core (
     logic [11:0] csr_addr;
 
     logic        trap_enter;
+    logic        sync_trap;
+    logic        timer_irq_req;
+    logic        take_timer_irq;
     logic        mret_enter;
 
     logic [31:0] trap_pc;
@@ -167,8 +170,15 @@ module cpu_core (
                    : rs1_data;
                    
     //assign trap_enter = sys_ecall && !effective_illegal;
-    assign trap_enter = effective_illegal || sys_ecall || load_misaligned || store_misaligned;
-    assign mret_enter = sys_mret && !effective_illegal;
+    assign sync_trap = effective_illegal || sys_ecall || load_misaligned || store_misaligned;
+
+    assign timer_irq_req = mstatus[3] && mie[7] && mip[7];
+
+    assign take_timer_irq = !rst && timer_irq_req && !sync_trap;
+
+    assign trap_enter = sync_trap || take_timer_irq;
+
+    assign mret_enter = sys_mret && !effective_illegal && !trap_enter;
 
     assign trap_vector = mtvec & 32'hFFFF_FFFC;
 
@@ -197,6 +207,10 @@ module cpu_core (
         else if (store_misaligned) begin
             trap_cause = 32'd6;
             trap_tval  = mem_addr;
+        end
+        else if (take_timer_irq) begin
+            trap_cause = 32'h8000_0007;
+            trap_tval  = 32'b0;
         end
     end
 
@@ -281,7 +295,7 @@ module cpu_core (
 
     assign effective_illegal  = illegal || csr_access_illegal;
 
-    assign csr_we = csr_en && csr_write_intent && !effective_illegal;
+    assign csr_we = csr_en && csr_write_intent && !effective_illegal && !trap_enter;
 
 
     //============================
@@ -406,7 +420,7 @@ module cpu_core (
     // Register File
     // ==============================
 
-    assign rf_we = reg_we && !effective_illegal && !lsu_misaligned &&(rd_addr != 5'd0);
+    assign rf_we = reg_we && !effective_illegal && !lsu_misaligned && !trap_enter && (rd_addr != 5'd0);
 
     regfile u_regfile (
         .clk      (clk),
@@ -495,7 +509,7 @@ module cpu_core (
     assign mem_wdata = lsu_wdata;
     assign mem_wstrb = lsu_wstrb;
 
-    assign mem_we = mem_store && !effective_illegal && !lsu_misaligned && (|lsu_wstrb);
+    assign mem_we = mem_store && !effective_illegal && !lsu_misaligned && !trap_enter && (|lsu_wstrb);
 
     // ============================
     // Writeback MUX
