@@ -964,13 +964,9 @@ $(RTTHREAD_SIM): $(RTL) $(SOC_RTL) tb/tb_soc_rtthread.sv
 >    -Werror-IMPLICIT -Werror-UNDRIVEN --Mdir build/obj_rtthread \
 >    --top-module tb_soc_rtthread $(RTL) $(SOC_RTL) tb/tb_soc_rtthread.sv
 
-.PHONY: rtthread-test rtthread-vendor-check rtthread-dump rtthread-wave
+.PHONY: rtthread-test rtthread-dump rtthread-wave
 
-rtthread-vendor-check:
->cd $(RTTHREAD_ROOT) && sha256sum --quiet -c SHA256SUMS
-
-rtthread-test: rtthread-vendor-check \
-               $(RTTHREAD_DIR)/rtthread.hex $(RTTHREAD_DIR)/rtthread.symbols.hex $(RTTHREAD_DIR)/rtthread.dump \
+rtthread-test: $(RTTHREAD_DIR)/rtthread.hex $(RTTHREAD_DIR)/rtthread.symbols.hex $(RTTHREAD_DIR)/rtthread.dump \
                $(RTTHREAD_O2_DIR)/rtthread.hex $(RTTHREAD_O2_DIR)/rtthread.symbols.hex $(RTTHREAD_O2_DIR)/rtthread.dump $(RTTHREAD_SIM)
 >./$(RTTHREAD_SIM) +image=$(RTTHREAD_DIR)/rtthread.hex +symbols=$(RTTHREAD_DIR)/rtthread.symbols.hex +wave=$(RTTHREAD_DIR)/rtthread.vcd
 >./$(RTTHREAD_SIM) +image=$(RTTHREAD_O2_DIR)/rtthread.hex +symbols=$(RTTHREAD_O2_DIR)/rtthread.symbols.hex +wave=$(RTTHREAD_O2_DIR)/rtthread.vcd

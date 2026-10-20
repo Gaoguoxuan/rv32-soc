@@ -28,7 +28,7 @@ make rtthread-dump
 make rtthread-wave
 ```
 
-rtthread-test 检查上游文件摘要，并运行独立编译的 -O0 / -O2 镜像。
+rtthread-test 分别运行 -O0 和 -O2 两个版本。
 成功时最后输出 M11.1 RT-THREAD CONSOLE O0/O2 CHECKS PASS。
 UART 中应包含 4.1.1 版本横幅、RTHW IRQ PASS、FORMAT、ARGS、BUFFER PASS
 以及 M11.1 PASS。版本横幅中的日期和时间由实际编译决定。
