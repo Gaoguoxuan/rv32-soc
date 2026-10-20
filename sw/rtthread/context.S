@@ -65,7 +65,7 @@ rt_hw_context_switch:
 
     sw sp, 0(a0)            # from_thread->sp = 当前现场地址
     lw sp, 0(a1)            # sp = to_thread->sp
-    j .Lrestore_context
+    j rt_hw_context_restore
 
 .size rt_hw_context_switch, .-rt_hw_context_switch
 
@@ -73,7 +73,12 @@ rt_hw_context_switch_to:
     csrci mstatus, 8
     lw sp, 0(a0)
 
-.Lrestore_context:
+.size rt_hw_context_switch_to, .-rt_hw_context_switch_to
+
+.globl rt_hw_context_restore
+.type rt_hw_context_restore, @function
+
+rt_hw_context_restore:
     lw t0, 124(sp)
     csrw mepc, t0
 
@@ -118,4 +123,4 @@ rt_hw_context_switch_to:
     lw sp, 4(sp)
     mret
 
-.size rt_hw_context_switch_to, .-rt_hw_context_switch_to
+.size rt_hw_context_restore, .-rt_hw_context_restore

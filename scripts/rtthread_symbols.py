@@ -33,6 +33,18 @@ def main():
         strong = ("rt_hw_context_switch_to", "rt_hw_context_switch",
                   "rt_hw_context_switch_interrupt", "rt_system_scheduler_start",
                   "rt_thread_yield", "rt_schedule", "rt_thread_init", "rt_thread_startup")
+    elif mode == "tick":
+        names = ("rt_hw_trap_entry", "rt_hw_trap_dispatch", "rt_hw_context_restore",
+                 "rt_hw_context_switch_to", "rt_hw_context_switch",
+                 "rt_hw_context_switch_interrupt", "rt_hw_tick_init", "rt_hw_tick_rearm",
+                 "rt_interrupt_enter", "rt_interrupt_leave", "rt_tick_increase", "rt_tick",
+                 "tick_entry", "finish_entry", "_thread_exit", "thread_locations",
+                 "stack_a", "stack_b", "stack_check", "arguments", "progress", "checksums",
+                 "normal_returns", "stopped_tick", "data_cookie", "stack_guard",
+                 "__stack_bottom", "__stack_top", "rt_current_thread", "rt_interrupt_nest",
+                 "rt_interrupt_from_thread", "rt_interrupt_to_thread",
+                 "rt_thread_switch_interrupt_flag", "rt_thread_init", "rt_thread_startup")
+        strong = names[:11]
     else:
         raise SystemExit(f"Unknown RT-Thread test mode: {mode}")
     symbols = {}

@@ -61,3 +61,46 @@ void rt_hw_context_switch_interrupt(rt_ubase_t from,
     rt_interrupt_to_thread = to;
     rt_thread_switch_interrupt_flag = 1;
 }
+
+rt_hw_stack_frame_t *rt_hw_trap_dispatch(
+    rt_hw_stack_frame_t *frame,
+    rt_uint32_t cause,
+    rt_uint32_t tval)
+{
+    if (cause != 0x80000007u ||
+        tval != 0 ||
+        rt_thread_self() == RT_NULL)
+    {
+        (void)rt_hw_interrupt_disable();
+        rt_hw_tick_stop();
+        rt_kprintf("RT-THREAD TRAP FAIL: cause=%08x tval=%08x\n",
+                   cause, tval);
+        while (1)
+        {
+        }
+    }
+
+    rt_interrupt_enter();
+
+    /* 推进 mtimecmp，撤销当前定时器中断请求。 */
+    rt_hw_tick_rearm();
+
+    /* 增加 tick，处理时间片和内核定时器。 */
+    rt_tick_increase();
+
+    rt_interrupt_leave();
+
+    if (rt_thread_switch_interrupt_flag != 0)
+    {
+        void **from_sp = (void **)rt_interrupt_from_thread;
+        void **to_sp = (void **)rt_interrupt_to_thread;
+
+        /* 先保存旧线程现场，再读取最终目标现场。 */
+        *from_sp = frame;
+        frame = (rt_hw_stack_frame_t *)*to_sp;
+
+        rt_thread_switch_interrupt_flag = 0;
+    }
+
+    return frame;
+}

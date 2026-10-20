@@ -1137,6 +1137,82 @@ rtthread-sched-wave: rtthread-sched-test
 >gtkwave $(RTTHREAD_SCHED_DIR)/rtthread_sched.vcd &
 
 
+# ============================================================
+# M11.4 RT-Thread hardware tick and interrupt-exit switching
+# ============================================================
+
+RTTHREAD_TICK_DIR := build/rtthread_tick
+RTTHREAD_TICK_O2_DIR := build/rtthread_tick_o2
+RTTHREAD_TICK_SHARED := $(RTTHREAD_START_SHARED) tick.o tick_test.o \
+    $(addsuffix .o,$(RTTHREAD_SCHED_KERNEL))
+RTTHREAD_TICK_SIM := build/obj_rtthread_tick/Vtb_soc_rtthread_tick
+
+$(RTTHREAD_TICK_DIR)/trap.o: sw/rtthread/trap.S
+>mkdir -p $(RTTHREAD_TICK_DIR)
+>$(RISCV_GCC) $(RTTHREAD_FLAGS) -O0 -c $< -o $@
+
+$(RTTHREAD_TICK_DIR)/rtthread_tick.elf: $(addprefix $(RTTHREAD_DIR)/,$(RTTHREAD_TICK_SHARED)) \
+    $(RTTHREAD_START_DIR)/context.o $(RTTHREAD_TICK_DIR)/trap.o sw/rtthread/sched_test.ld
+>mkdir -p $(RTTHREAD_TICK_DIR)
+>$(RISCV_GCC) $(RTTHREAD_FLAGS) -O0 -Wl,-T,sw/rtthread/sched_test.ld -Wl,--no-relax \
+>    -Wl,--gc-sections -Wl,-Map,$(RTTHREAD_TICK_DIR)/rtthread_tick.map -o $@ $(filter %.o,$^) -lgcc
+
+$(RTTHREAD_TICK_DIR)/rtthread_tick.bin: $(RTTHREAD_TICK_DIR)/rtthread_tick.elf
+>$(RISCV_OBJCOPY) -O binary $< $@
+
+$(RTTHREAD_TICK_DIR)/rtthread_tick.hex: $(RTTHREAD_TICK_DIR)/rtthread_tick.bin scripts/bin2hex.py
+>python3 scripts/bin2hex.py $< $@
+
+$(RTTHREAD_TICK_DIR)/rtthread_tick.symbols.hex: $(RTTHREAD_TICK_DIR)/rtthread_tick.elf scripts/rtthread_symbols.py
+>python3 scripts/rtthread_symbols.py $(RISCV_PREFIX) $< $@ tick
+
+$(RTTHREAD_TICK_DIR)/rtthread_tick.dump: $(RTTHREAD_TICK_DIR)/rtthread_tick.elf
+>$(RISCV_OBJDUMP) -d -M no-aliases $< > $@
+
+$(RTTHREAD_TICK_O2_DIR)/trap.o: sw/rtthread/trap.S
+>mkdir -p $(RTTHREAD_TICK_O2_DIR)
+>$(RISCV_GCC) $(RTTHREAD_FLAGS) -O2 -c $< -o $@
+
+$(RTTHREAD_TICK_O2_DIR)/rtthread_tick.elf: $(addprefix $(RTTHREAD_O2_DIR)/,$(RTTHREAD_TICK_SHARED)) \
+    $(RTTHREAD_START_O2_DIR)/context.o $(RTTHREAD_TICK_O2_DIR)/trap.o sw/rtthread/sched_test.ld
+>mkdir -p $(RTTHREAD_TICK_O2_DIR)
+>$(RISCV_GCC) $(RTTHREAD_FLAGS) -O2 -Wl,-T,sw/rtthread/sched_test.ld -Wl,--no-relax \
+>    -Wl,--gc-sections -Wl,-Map,$(RTTHREAD_TICK_O2_DIR)/rtthread_tick.map -o $@ $(filter %.o,$^) -lgcc
+
+$(RTTHREAD_TICK_O2_DIR)/rtthread_tick.bin: $(RTTHREAD_TICK_O2_DIR)/rtthread_tick.elf
+>$(RISCV_OBJCOPY) -O binary $< $@
+
+$(RTTHREAD_TICK_O2_DIR)/rtthread_tick.hex: $(RTTHREAD_TICK_O2_DIR)/rtthread_tick.bin scripts/bin2hex.py
+>python3 scripts/bin2hex.py $< $@
+
+$(RTTHREAD_TICK_O2_DIR)/rtthread_tick.symbols.hex: $(RTTHREAD_TICK_O2_DIR)/rtthread_tick.elf scripts/rtthread_symbols.py
+>python3 scripts/rtthread_symbols.py $(RISCV_PREFIX) $< $@ tick
+
+$(RTTHREAD_TICK_O2_DIR)/rtthread_tick.dump: $(RTTHREAD_TICK_O2_DIR)/rtthread_tick.elf
+>$(RISCV_OBJDUMP) -d -M no-aliases $< > $@
+
+$(RTTHREAD_TICK_SIM): $(RTL) $(SOC_RTL) tb/tb_soc_rtthread_tick.sv
+>mkdir -p build/obj_rtthread_tick
+>$(VERILATOR) --binary --timing --trace --timescale 1ns/1ps -Wall -Wno-fatal \
+>    -Werror-IMPLICIT -Werror-UNDRIVEN --Mdir build/obj_rtthread_tick \
+>    --top-module tb_soc_rtthread_tick $(RTL) $(SOC_RTL) tb/tb_soc_rtthread_tick.sv
+
+.PHONY: rtthread-tick-test rtthread-tick-dump rtthread-tick-wave
+
+rtthread-tick-test: $(RTTHREAD_TICK_DIR)/rtthread_tick.hex $(RTTHREAD_TICK_DIR)/rtthread_tick.symbols.hex \
+    $(RTTHREAD_TICK_DIR)/rtthread_tick.dump $(RTTHREAD_TICK_O2_DIR)/rtthread_tick.hex \
+    $(RTTHREAD_TICK_O2_DIR)/rtthread_tick.symbols.hex $(RTTHREAD_TICK_O2_DIR)/rtthread_tick.dump $(RTTHREAD_TICK_SIM)
+>./$(RTTHREAD_TICK_SIM) +image=$(RTTHREAD_TICK_DIR)/rtthread_tick.hex +symbols=$(RTTHREAD_TICK_DIR)/rtthread_tick.symbols.hex +wave=$(RTTHREAD_TICK_DIR)/rtthread_tick.vcd
+>./$(RTTHREAD_TICK_SIM) +image=$(RTTHREAD_TICK_O2_DIR)/rtthread_tick.hex +symbols=$(RTTHREAD_TICK_O2_DIR)/rtthread_tick.symbols.hex +wave=$(RTTHREAD_TICK_O2_DIR)/rtthread_tick.vcd
+>@echo "M11.4 RT-THREAD TICK O0/O2 CHECKS PASS"
+
+rtthread-tick-dump: $(RTTHREAD_TICK_DIR)/rtthread_tick.dump
+>cat $(RTTHREAD_TICK_DIR)/rtthread_tick.dump
+
+rtthread-tick-wave: rtthread-tick-test
+>gtkwave $(RTTHREAD_TICK_DIR)/rtthread_tick.vcd &
+
+
 TB := tb/tb_rv32i.sv
 
 

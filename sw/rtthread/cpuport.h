@@ -21,3 +21,14 @@ _Static_assert(offsetof(rt_hw_stack_frame_t, mstatus) == 128,
 extern volatile rt_ubase_t rt_interrupt_from_thread;
 extern volatile rt_ubase_t rt_interrupt_to_thread;
 extern volatile rt_uint32_t rt_thread_switch_interrupt_flag;
+
+void rt_hw_trap_entry(void);
+
+void rt_hw_tick_init(void);
+void rt_hw_tick_stop(void);
+void rt_hw_tick_rearm(void);
+
+rt_hw_stack_frame_t *rt_hw_trap_dispatch(
+    rt_hw_stack_frame_t *frame,
+    rt_uint32_t cause,
+    rt_uint32_t tval);
