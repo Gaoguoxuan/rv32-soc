@@ -4,13 +4,15 @@ module csr_file (
 
     input  logic [11:0] csr_addr,
 
-    input logic        trap_enter,
-    input logic [31:0] trap_pc,
-    input logic [31:0] trap_cause,
+    input  logic        trap_enter,
+    input  logic [31:0] trap_pc,
+    input  logic [31:0] trap_cause,
 
-    input logic        mret_enter,
+    input  logic        mret_enter,
 
-    input logic [31:0] trap_tval,
+    input  logic [31:0] trap_tval,
+
+    input  logic        timer_irq,
 
     output logic [31:0] mtval,
 
@@ -44,6 +46,8 @@ module csr_file (
     localparam logic [11:0] CSR_MTVAL    = 12'h343;
     localparam logic [11:0] CSR_MIP      = 12'h344;
 
+
+    assign mip = {24'b0, timer_irq, 7'b0};
 
     // ============================================================
     // CSR read
@@ -81,8 +85,8 @@ module csr_file (
             CSR_MIP: begin
                 csr_rdata    = mip;
 
-                // 后面由中断硬件维护。
-                // M7 暂时把它作为只读 CSR。
+                // MTIP 由 timer_irq 驱动，其余挂起位固定为 0。
+                // 当前工程沿用 mip 整体只读的约定。
                 csr_writable = 1'b0;
             end
 
@@ -113,8 +117,6 @@ module csr_file (
             mepc     <= 32'b0;
             mcause   <= 32'b0;
             mtval    <= 32'b0;
-
-            mip      <= 32'b0;
 
         end
 

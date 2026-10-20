@@ -31,6 +31,8 @@ module tb_cpu_m43;
         .clk                (clk),
         .rst                (rst),
 
+        .timer_irq          (1'b0),
+
         .instr              (instr),
         .pc                 (pc),
 

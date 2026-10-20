@@ -47,6 +47,7 @@ module tb_illegal_asm;
     cpu_core dut (
         .clk       (clk),
         .rst       (rst),
+        .timer_irq (1'b0),
         .instr     (instr),
         .pc        (pc),
         .mem_addr  (mem_addr),

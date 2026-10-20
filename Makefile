@@ -519,6 +519,12 @@ soc-timer-wave: soc-timer-test
 >gtkwave $(SOC_TIMER_DIR)/soc_timer.vcd &
 
 
+.PHONY: mtip-test
+
+mtip-test: csr-test soc-timer-test
+>@echo "M9.3.1 MTIP CHECKS PASS"
+
+
 TB := tb/tb_rv32i.sv
 
 

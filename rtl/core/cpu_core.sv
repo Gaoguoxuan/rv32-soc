@@ -2,6 +2,8 @@ module cpu_core (
     input  logic        clk,
     input  logic        rst,
 
+    input  logic        timer_irq,
+
     // Instruction interface
     input  logic [31:0] instr,
     output logic [31:0] pc,
@@ -204,13 +206,15 @@ module cpu_core (
 
         .csr_addr     (csr_addr),
 
-        .trap_enter  (trap_enter),
-        .trap_pc     (trap_pc),
-        .trap_cause  (trap_cause),
+        .trap_enter   (trap_enter),
+        .trap_pc      (trap_pc),
+        .trap_cause   (trap_cause),
 
-        .mret_enter  (mret_enter),
+        .mret_enter   (mret_enter),
 
-        .trap_tval   (trap_tval),
+        .trap_tval    (trap_tval),
+
+        .timer_irq    (timer_irq),
 
         .mtval        (mtval),
 

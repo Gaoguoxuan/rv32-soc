@@ -30,6 +30,8 @@ module tb_zicsr_asm;
         .clk       (clk),
         .rst       (rst),
 
+        .timer_irq (1'b0),
+
         .instr     (instr),
         .pc        (pc),
 

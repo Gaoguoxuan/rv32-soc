@@ -75,6 +75,8 @@ module rv32_soc #(
         .clk       (clk),
         .rst       (rst),
 
+        .timer_irq (timer_irq),
+
         .instr     (instr),
         .pc        (pc),
 

@@ -84,6 +84,8 @@ module tb_soc_timer;
             old_time    = dut.u_timer.mtime;
             old_compare = dut.u_timer.mtimecmp;
 
+            check32("CPU timer IRQ input", {31'b0, dut.u_cpu.timer_irq}, {31'b0, old_irq});
+            check32("CPU mip before clock", dut.u_cpu.mip, old_irq ? 32'h80 : 32'b0);
             check32("Timer address selection", {31'b0, dut.timer_sel}, {31'b0, selected});
             check32("Timer write selection", {31'b0, dut.u_timer.we}, {31'b0, timer_write});
             check32("Timer relative address", dut.u_timer.addr, bus_addr - TIMER_BASE);
@@ -171,6 +173,8 @@ module tb_soc_timer;
 
             @(posedge clk);
             #1;
+
+            check32("CPU mip after clock", dut.u_cpu.mip, dut.timer_irq ? 32'h80 : 32'b0);
 
             if (!old_irq && dut.timer_irq) begin
                 // In this image IRQ must rise by counting to a programmed deadline.

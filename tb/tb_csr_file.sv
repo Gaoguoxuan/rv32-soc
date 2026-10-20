@@ -2,6 +2,9 @@ module tb_csr_file;
 
     logic clk;
     logic rst;
+    logic timer_irq;
+    logic trap_enter;
+    logic mret_enter;
 
     logic [11:0] csr_addr;
     logic [31:0] csr_rdata;
@@ -21,6 +24,7 @@ module tb_csr_file;
     logic [31:0] mip;
 
     integer errors = 0;
+    integer mtip_checks = 0;
 
 
     csr_file dut (
@@ -29,11 +33,13 @@ module tb_csr_file;
 
         .csr_addr     (csr_addr),
 
-        .trap_enter   (1'b0),
-        .trap_pc      (32'b0),
-        .trap_cause   (32'b0),
+        .trap_enter   (trap_enter),
+        .trap_pc      (32'h00000080),
+        .trap_cause   (32'd11),
         .trap_tval    (32'b0),
-        .mret_enter   (1'b0),
+
+        .timer_irq    (timer_irq),
+        .mret_enter   (mret_enter),
         .mtval        (),
 
         .csr_rdata    (csr_rdata),
@@ -121,11 +127,28 @@ module tb_csr_file;
     endtask
 
 
+    task automatic check_mtip(input logic pending, input string name);
+        logic [31:0] expected;
+        begin
+            expected = pending ? 32'h00000080 : 32'b0;
+            check_csr(12'h344, expected, name);
+            if (mip !== expected) begin
+                $display("[FAIL] %s: mip output=%08x expected=%08x", name, mip, expected);
+                errors++;
+            end
+            mtip_checks++;
+        end
+    endtask
+
+
     initial begin
 
         csr_addr  = 12'b0;
         csr_wdata = 32'b0;
         csr_we    = 1'b0;
+        timer_irq = 1'b0;
+        trap_enter = 1'b0;
+        mret_enter = 1'b0;
 
         rst = 1'b1;
 
@@ -134,6 +157,8 @@ module tb_csr_file;
 
         @(negedge clk);
         rst = 1'b0;
+
+        check_mtip(1'b0, "MTIP reset");
 
 
         // --------------------------------------------
@@ -244,12 +269,86 @@ module tb_csr_file;
         end
 
 
+        // --------------------------------------------
+        // MTIP describes pending state independently of both enable bits.
+        // Change the input away from a rising edge to catch a registered
+        // or sticky implementation instead of the intended direct path.
+        // --------------------------------------------
+
+        for (integer enables = 0; enables < 4; enables++) begin
+            write_csr(12'h300, enables[1] ? 32'h8 : 32'b0);
+            write_csr(12'h304, enables[0] ? 32'h80 : 32'b0);
+
+            @(negedge clk);
+            #1;
+            timer_irq = 1'b1;
+            check_mtip(1'b1, $sformatf("MTIP high MIE=%0b MTIE=%0b", enables[1], enables[0]));
+
+            @(negedge clk);
+            #1;
+            timer_irq = 1'b0;
+            check_mtip(1'b0, $sformatf("MTIP low MIE=%0b MTIE=%0b", enables[1], enables[0]));
+
+            check_csr(12'h300, enables[1] ? 32'h8 : 32'b0, "MIE preserved");
+            check_csr(12'h304, enables[0] ? 32'h80 : 32'b0, "MTIE preserved");
+        end
+
+        // Keep the current project's read-only mip policy: software cannot
+        // assert/clear MTIP or set any of the unimplemented pending bits.
+        write_csr(12'h344, 32'hffffffff);
+        check_mtip(1'b0, "SW cannot set MTIP");
+
+        @(negedge clk);
+        timer_irq = 1'b1;
+        write_csr(12'h344, 32'b0);
+        check_mtip(1'b1, "SW cannot clear MTIP");
+        write_csr(12'h344, 32'hffffffff);
+        check_mtip(1'b1, "Other pending bits zero");
+
+        // Trap entry masks delivery through MIE, but must retain pending
+        // state. MRET restores MIE and also must leave MTIP asserted.
+        @(negedge clk);
+        trap_enter = 1'b1;
+        @(posedge clk);
+        #1;
+        trap_enter = 1'b0;
+        check_mtip(1'b1, "Trap preserves MTIP");
+        check_csr(12'h300, 32'h1880, "Trap masks MIE");
+
+        @(negedge clk);
+        mret_enter = 1'b1;
+        @(posedge clk);
+        #1;
+        mret_enter = 1'b0;
+        check_mtip(1'b1, "MRET preserves MTIP");
+        check_csr(12'h300, 32'h1888, "MRET restores MIE");
+
+        // mip has no stored reset state: it still reflects a high external
+        // input during CSR reset. In the SoC the timer itself resets low.
+        @(negedge clk);
+        rst = 1'b1;
+        @(posedge clk);
+        #1;
+        check_mtip(1'b1, "Reset with IRQ high");
+        check_csr(12'h300, 32'b0, "MIE reset");
+        check_csr(12'h304, 32'b0, "MTIE reset");
+
+        @(negedge clk);
+        #1;
+        timer_irq = 1'b0;
+        check_mtip(1'b0, "IRQ clears during reset");
+        @(negedge clk);
+        rst = 1'b0;
+        check_mtip(1'b0, "MTIP after reset");
+
+
         if (errors == 0) begin
 
             $display("");
             $display("==============================");
             $display("       M7.1 CSR FILE PASS");
             $display("   M8.3 MTVAL CSR CHECKS PASS");
+            $display("   M9.3.1 MTIP CSR CHECKS PASS (%0d checks)", mtip_checks);
             $display("==============================");
 
         end
