@@ -420,6 +420,41 @@ mtval-test: csr-test ecall-test illegal-test
 >@echo "M8.3 MTVAL TESTS PASS"
 
 
+# ============================================================
+# M9.1 standalone machine timer test
+# ============================================================
+
+TIMER_SIM := build/obj_timer/Vtb_timer_mmio
+
+# addr[1:0] is intentionally ignored by the register word decoder.
+# Byte write selection is carried by wstrb.
+$(TIMER_SIM): rtl/soc/timer_mmio.sv tb/tb_timer_mmio.sv
+>mkdir -p build/obj_timer
+>$(VERILATOR) \
+>    --binary \
+>    --timing \
+>    --trace \
+>    -Wall \
+>    -Wno-UNUSEDSIGNAL \
+>    --Mdir build/obj_timer \
+>    --top-module tb_timer_mmio \
+>    rtl/soc/timer_mmio.sv \
+>    tb/tb_timer_mmio.sv
+
+.PHONY: timer-test timer-lint timer-wave
+
+timer-test: $(TIMER_SIM)
+>mkdir -p build/timer
+>./$(TIMER_SIM)
+
+timer-lint:
+>$(VERILATOR) --lint-only -Wall -Wno-UNUSEDSIGNAL \
+>    --top-module timer_mmio rtl/soc/timer_mmio.sv
+
+timer-wave: timer-test
+>gtkwave build/timer/timer.vcd &
+
+
 TB := tb/tb_rv32i.sv
 
 
@@ -648,9 +683,11 @@ clean:
 >rm -rf build/obj_illegal
 >rm -rf build/obj_csr
 >rm -rf build/obj_misaligned
+>rm -rf build/obj_timer
 >rm -rf build/asm
 >rm -rf build/c
 >rm -rf build/uart
 >rm -rf build/ecall
 >rm -rf build/illegal
 >rm -rf build/misaligned
+>rm -rf build/timer
