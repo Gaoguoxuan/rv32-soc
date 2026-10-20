@@ -1,5 +1,7 @@
 module rv32_soc #(
-    parameter string ROM_HEX = ""
+    parameter string ROM_HEX = "",
+    parameter int unsigned ROM_BYTES = 4096,
+    parameter int unsigned RAM_BYTES = 1024
 )(
     input  logic        clk,
     input  logic        rst,
@@ -36,11 +38,11 @@ module rv32_soc #(
 
     localparam logic [31:0] ROM_BASE = 32'h0000_0000;
 
-    localparam logic [31:0] ROM_END  = 32'h0000_0FFF;
+    localparam logic [31:0] ROM_END  = ROM_BASE + ROM_BYTES - 32'd1;
     
     localparam logic [31:0] RAM_BASE = 32'h1000_0000;
 
-    localparam logic [31:0] RAM_END  = 32'h1000_03FF;
+    localparam logic [31:0] RAM_END  = RAM_BASE + RAM_BYTES - 32'd1;
 
     localparam logic [31:0] UART_TX  = 32'h2000_0000;
 
@@ -93,7 +95,7 @@ module rv32_soc #(
     // ============================================================
 
     simple_rom #(
-        .WORDS    (1024),
+        .WORDS    (ROM_BYTES / 4),
         .HEX_FILE (ROM_HEX)
     ) u_rom (
         // CPU instruction fetch
@@ -147,7 +149,7 @@ module rv32_soc #(
     // ============================================================
 
     simple_ram #(
-        .WORDS (256)
+        .WORDS (RAM_BYTES / 4)
     ) u_ram (
         .clk   (clk),
 
@@ -163,6 +165,18 @@ module rv32_soc #(
 
         .rdata (ram_rdata)
     );
+
+    initial begin
+        if (ROM_BYTES < 8 ||
+            (ROM_BYTES & (ROM_BYTES - 32'd1)) != 0 ||
+            ROM_BYTES > 32'h1000_0000)
+            $fatal(1, "Invalid ROM_BYTES: %0d", ROM_BYTES);
+
+        if (RAM_BYTES < 8 ||
+            (RAM_BYTES & (RAM_BYTES - 32'd1)) != 0 ||
+            RAM_BYTES > 32'h1000_0000)
+            $fatal(1, "Invalid RAM_BYTES: %0d", RAM_BYTES);
+    end
 
 
     // ============================================================

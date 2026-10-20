@@ -610,6 +610,79 @@ soc-timer-irq-wave: soc-timer-irq-test
 >gtkwave $(SOC_TIMER_IRQ_DIR)/soc_timer_irq.vcd &
 
 
+# ============================================================
+# M10.1 Configurable memory and a 64 KiB ROM / 64 KiB RAM image
+# ============================================================
+
+SOC_MEMORY_DIR := build/soc_memory
+SOC_MEMORY_SRC := sw/memory/main.c
+SOC_MEMORY_LDS := sw/memory/link.ld
+SOC_MEMORY_START := sw/uart/start.S
+SOC_MEMORY_ELF := $(SOC_MEMORY_DIR)/soc_memory.elf
+SOC_MEMORY_BIN := $(SOC_MEMORY_DIR)/soc_memory.bin
+SOC_MEMORY_HEX := $(SOC_MEMORY_DIR)/soc_memory.hex
+SOC_MEMORY_DUMP := $(SOC_MEMORY_DIR)/soc_memory.dump
+SOC_MEMORY_SIM := build/obj_soc_memory/Vtb_soc_memory
+SOC_MEMORY_SMALL_SIM := build/obj_memory_small/Vtb_soc_memory_params
+SOC_MEMORY_BAD_ROM_SIM := build/obj_memory_bad_rom/Vtb_soc_memory_params
+SOC_MEMORY_BAD_RAM_SIM := build/obj_memory_bad_ram/Vtb_soc_memory_params
+SOC_MEMORY_PARAM_FLAGS := --binary --timing -Wall -Wno-fatal \
+    -Werror-IMPLICIT -Werror-UNDRIVEN --top-module tb_soc_memory_params
+
+$(SOC_MEMORY_ELF): $(SOC_MEMORY_SRC) $(SOC_MEMORY_LDS) $(SOC_MEMORY_START)
+>mkdir -p $(SOC_MEMORY_DIR)
+>$(RISCV_GCC) $(UART_CFLAGS) -Wall -Wextra \
+>    -Wl,-T,$(SOC_MEMORY_LDS) -Wl,--no-relax \
+>    -Wl,-Map,$(SOC_MEMORY_DIR)/soc_memory.map \
+>    -o $(SOC_MEMORY_ELF) $(SOC_MEMORY_START) $(SOC_MEMORY_SRC)
+
+$(SOC_MEMORY_BIN): $(SOC_MEMORY_ELF)
+>$(RISCV_OBJCOPY) -O binary $(SOC_MEMORY_ELF) $(SOC_MEMORY_BIN)
+
+$(SOC_MEMORY_HEX): $(SOC_MEMORY_BIN) scripts/bin2hex.py
+>python3 scripts/bin2hex.py $(SOC_MEMORY_BIN) $(SOC_MEMORY_HEX)
+
+$(SOC_MEMORY_DUMP): $(SOC_MEMORY_ELF)
+>$(RISCV_OBJDUMP) -d -M no-aliases $(SOC_MEMORY_ELF) > $(SOC_MEMORY_DUMP)
+
+$(SOC_MEMORY_SIM): $(RTL) $(SOC_RTL) tb/tb_soc_memory.sv
+>mkdir -p build/obj_soc_memory
+>$(VERILATOR) --binary --timing --trace -Wall -Wno-fatal \
+>    -Werror-IMPLICIT -Werror-UNDRIVEN \
+>    --Mdir build/obj_soc_memory --top-module tb_soc_memory \
+>    $(RTL) $(SOC_RTL) tb/tb_soc_memory.sv
+
+$(SOC_MEMORY_SMALL_SIM): $(RTL) $(SOC_RTL) tb/tb_soc_memory_params.sv
+>mkdir -p build/obj_memory_small
+>$(VERILATOR) $(SOC_MEMORY_PARAM_FLAGS) --Mdir build/obj_memory_small \
+>    $(RTL) $(SOC_RTL) tb/tb_soc_memory_params.sv
+
+$(SOC_MEMORY_BAD_ROM_SIM): $(RTL) $(SOC_RTL) tb/tb_soc_memory_params.sv
+>mkdir -p build/obj_memory_bad_rom
+>$(VERILATOR) $(SOC_MEMORY_PARAM_FLAGS) --Mdir build/obj_memory_bad_rom \
+>    -GROM_BYTES=12 $(RTL) $(SOC_RTL) tb/tb_soc_memory_params.sv
+
+$(SOC_MEMORY_BAD_RAM_SIM): $(RTL) $(SOC_RTL) tb/tb_soc_memory_params.sv
+>mkdir -p build/obj_memory_bad_ram
+>$(VERILATOR) $(SOC_MEMORY_PARAM_FLAGS) --Mdir build/obj_memory_bad_ram \
+>    -GRAM_BYTES=12 $(RTL) $(SOC_RTL) tb/tb_soc_memory_params.sv
+
+.PHONY: soc-memory-test soc-memory-param-test soc-memory-dump soc-memory-wave
+
+soc-memory-test: $(SOC_MEMORY_HEX) $(SOC_MEMORY_DUMP) $(SOC_MEMORY_SIM) soc-memory-param-test
+>./$(SOC_MEMORY_SIM)
+
+soc-memory-param-test: $(SOC_MEMORY_SMALL_SIM) $(SOC_MEMORY_BAD_ROM_SIM) $(SOC_MEMORY_BAD_RAM_SIM) scripts/check_soc_memory_params.py
+>./$(SOC_MEMORY_SMALL_SIM)
+>python3 scripts/check_soc_memory_params.py
+
+soc-memory-dump: $(SOC_MEMORY_DUMP)
+>cat $(SOC_MEMORY_DUMP)
+
+soc-memory-wave: soc-memory-test
+>gtkwave $(SOC_MEMORY_DIR)/soc_memory.vcd &
+
+
 TB := tb/tb_rv32i.sv
 
 
@@ -842,6 +915,10 @@ clean:
 >rm -rf build/obj_soc_timer
 >rm -rf build/obj_cpu_timer_irq
 >rm -rf build/obj_soc_timer_irq
+>rm -rf build/obj_soc_memory
+>rm -rf build/obj_memory_small
+>rm -rf build/obj_memory_bad_rom
+>rm -rf build/obj_memory_bad_ram
 >rm -rf build/asm
 >rm -rf build/c
 >rm -rf build/uart
@@ -852,3 +929,4 @@ clean:
 >rm -rf build/soc_timer
 >rm -rf build/cpu_timer_irq
 >rm -rf build/soc_timer_irq
+>rm -rf build/soc_memory
