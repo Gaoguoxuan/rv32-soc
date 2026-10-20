@@ -556,6 +556,60 @@ timer-irq-wave: timer-irq-test
 >gtkwave build/cpu_timer_irq/cpu_timer_irq.vcd &
 
 
+# ============================================================
+# M9.3.3 Real SoC timer interrupts through an assembly/C handler
+# ============================================================
+
+SOC_TIMER_IRQ_DIR := build/soc_timer_irq
+SOC_TIMER_IRQ_SRC := sw/timer_irq/main.c
+SOC_TIMER_IRQ_TRAP := sw/timer_irq/trap.S
+SOC_TIMER_IRQ_START := sw/uart/start.S
+SOC_TIMER_IRQ_LDS := sw/timer_irq/link.ld
+SOC_TIMER_IRQ_ELF := $(SOC_TIMER_IRQ_DIR)/soc_timer_irq.elf
+SOC_TIMER_IRQ_BIN := $(SOC_TIMER_IRQ_DIR)/soc_timer_irq.bin
+SOC_TIMER_IRQ_HEX := $(SOC_TIMER_IRQ_DIR)/soc_timer_irq.hex
+SOC_TIMER_IRQ_DUMP := $(SOC_TIMER_IRQ_DIR)/soc_timer_irq.dump
+SOC_TIMER_IRQ_MAP := $(SOC_TIMER_IRQ_DIR)/soc_timer_irq.map
+SOC_TIMER_IRQ_SIM := build/obj_soc_timer_irq/Vtb_soc_timer_irq
+SOC_TIMER_IRQ_CFLAGS := $(filter-out -march=%,$(UART_CFLAGS)) \
+    -march=rv32i_zicsr -Wall -Wextra -fstack-usage
+
+$(SOC_TIMER_IRQ_ELF): $(SOC_TIMER_IRQ_SRC) $(SOC_TIMER_IRQ_TRAP) $(SOC_TIMER_IRQ_START) $(SOC_TIMER_IRQ_LDS)
+>mkdir -p $(SOC_TIMER_IRQ_DIR)
+>$(RISCV_GCC) $(SOC_TIMER_IRQ_CFLAGS) \
+>    -Wl,-T,$(SOC_TIMER_IRQ_LDS) -Wl,--no-relax \
+>    -Wl,-Map,$(SOC_TIMER_IRQ_MAP) \
+>    -o $(SOC_TIMER_IRQ_ELF) \
+>    $(SOC_TIMER_IRQ_START) $(SOC_TIMER_IRQ_TRAP) $(SOC_TIMER_IRQ_SRC)
+
+$(SOC_TIMER_IRQ_BIN): $(SOC_TIMER_IRQ_ELF)
+>$(RISCV_OBJCOPY) -O binary $(SOC_TIMER_IRQ_ELF) $(SOC_TIMER_IRQ_BIN)
+
+$(SOC_TIMER_IRQ_HEX): $(SOC_TIMER_IRQ_BIN) scripts/bin2hex.py
+>python3 scripts/bin2hex.py $(SOC_TIMER_IRQ_BIN) $(SOC_TIMER_IRQ_HEX)
+
+$(SOC_TIMER_IRQ_DUMP): $(SOC_TIMER_IRQ_ELF)
+>$(RISCV_OBJDUMP) -d -M no-aliases $(SOC_TIMER_IRQ_ELF) > $(SOC_TIMER_IRQ_DUMP)
+
+$(SOC_TIMER_IRQ_SIM): $(RTL) $(SOC_RTL) tb/tb_soc_timer_irq.sv
+>mkdir -p build/obj_soc_timer_irq
+>$(VERILATOR) --binary --timing --trace -Wall -Wno-fatal \
+>    -Werror-IMPLICIT -Werror-UNDRIVEN \
+>    --Mdir build/obj_soc_timer_irq --top-module tb_soc_timer_irq \
+>    $(RTL) $(SOC_RTL) tb/tb_soc_timer_irq.sv
+
+.PHONY: soc-timer-irq-test soc-timer-irq-dump soc-timer-irq-wave
+
+soc-timer-irq-test: $(SOC_TIMER_IRQ_HEX) $(SOC_TIMER_IRQ_DUMP) $(SOC_TIMER_IRQ_SIM)
+>./$(SOC_TIMER_IRQ_SIM)
+
+soc-timer-irq-dump: $(SOC_TIMER_IRQ_DUMP)
+>cat $(SOC_TIMER_IRQ_DUMP)
+
+soc-timer-irq-wave: soc-timer-irq-test
+>gtkwave $(SOC_TIMER_IRQ_DIR)/soc_timer_irq.vcd &
+
+
 TB := tb/tb_rv32i.sv
 
 
@@ -787,6 +841,7 @@ clean:
 >rm -rf build/obj_timer
 >rm -rf build/obj_soc_timer
 >rm -rf build/obj_cpu_timer_irq
+>rm -rf build/obj_soc_timer_irq
 >rm -rf build/asm
 >rm -rf build/c
 >rm -rf build/uart
@@ -796,3 +851,4 @@ clean:
 >rm -rf build/timer
 >rm -rf build/soc_timer
 >rm -rf build/cpu_timer_irq
+>rm -rf build/soc_timer_irq
