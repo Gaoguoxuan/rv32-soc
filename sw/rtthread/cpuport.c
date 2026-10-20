@@ -43,3 +43,21 @@ rt_uint8_t *rt_hw_stack_init(void *entry,
 
     return (rt_uint8_t *)frame;
 }
+
+volatile rt_ubase_t rt_interrupt_from_thread;
+volatile rt_ubase_t rt_interrupt_to_thread;
+volatile rt_uint32_t rt_thread_switch_interrupt_flag;
+
+void rt_hw_context_switch_interrupt(rt_ubase_t from,
+                                    rt_ubase_t to)
+{
+    /* 一次中断处理过程中，保留最初被打断的线程。 */
+    if (rt_thread_switch_interrupt_flag == 0)
+    {
+        rt_interrupt_from_thread = from;
+    }
+
+    /* 调度结果可能变化，目标取最后一次选择。 */
+    rt_interrupt_to_thread = to;
+    rt_thread_switch_interrupt_flag = 1;
+}

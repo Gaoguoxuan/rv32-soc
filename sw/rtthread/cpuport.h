@@ -17,3 +17,7 @@ _Static_assert(offsetof(rt_hw_stack_frame_t, mepc) == 124,
                "mepc offset");
 _Static_assert(offsetof(rt_hw_stack_frame_t, mstatus) == 128,
                "mstatus offset");
+
+extern volatile rt_ubase_t rt_interrupt_from_thread;
+extern volatile rt_ubase_t rt_interrupt_to_thread;
+extern volatile rt_uint32_t rt_thread_switch_interrupt_flag;

@@ -1060,6 +1060,83 @@ rtthread-start-wave: rtthread-start-test
 >gtkwave $(RTTHREAD_START_DIR)/rtthread_start.vcd &
 
 
+# ============================================================
+# M11.3 RT-Thread scheduler and thread-mode context switching
+# ============================================================
+
+RTTHREAD_SCHED_DIR := build/rtthread_sched
+RTTHREAD_SCHED_O2_DIR := build/rtthread_sched_o2
+RTTHREAD_SCHED_KERNEL := object thread scheduler timer clock irq idle
+RTTHREAD_SCHED_SHARED := $(RTTHREAD_START_SHARED) sched_test.o \
+    $(addsuffix .o,$(RTTHREAD_SCHED_KERNEL))
+RTTHREAD_SCHED_SIM := build/obj_rtthread_sched/Vtb_soc_rtthread_sched
+
+$(RTTHREAD_DIR)/%.o: $(RTTHREAD_ROOT)/src/%.c $(RTTHREAD_DEPS)
+>mkdir -p $(RTTHREAD_DIR)
+>$(RISCV_GCC) $(RTTHREAD_UPSTREAM_FLAGS) -O0 -c $< -o $@
+
+$(RTTHREAD_O2_DIR)/%.o: $(RTTHREAD_ROOT)/src/%.c $(RTTHREAD_DEPS)
+>mkdir -p $(RTTHREAD_O2_DIR)
+>$(RISCV_GCC) $(RTTHREAD_UPSTREAM_FLAGS) -O2 -c $< -o $@
+
+$(RTTHREAD_SCHED_DIR)/rtthread_sched.elf: $(addprefix $(RTTHREAD_DIR)/,$(RTTHREAD_SCHED_SHARED)) \
+    $(RTTHREAD_START_DIR)/context.o sw/rtthread/sched_test.ld
+>mkdir -p $(RTTHREAD_SCHED_DIR)
+>$(RISCV_GCC) $(RTTHREAD_FLAGS) -O0 -Wl,-T,sw/rtthread/sched_test.ld -Wl,--no-relax \
+>    -Wl,--gc-sections -Wl,-Map,$(RTTHREAD_SCHED_DIR)/rtthread_sched.map -o $@ $(filter %.o,$^) -lgcc
+
+$(RTTHREAD_SCHED_O2_DIR)/rtthread_sched.elf: $(addprefix $(RTTHREAD_O2_DIR)/,$(RTTHREAD_SCHED_SHARED)) \
+    $(RTTHREAD_START_O2_DIR)/context.o sw/rtthread/sched_test.ld
+>mkdir -p $(RTTHREAD_SCHED_O2_DIR)
+>$(RISCV_GCC) $(RTTHREAD_FLAGS) -O2 -Wl,-T,sw/rtthread/sched_test.ld -Wl,--no-relax \
+>    -Wl,--gc-sections -Wl,-Map,$(RTTHREAD_SCHED_O2_DIR)/rtthread_sched.map -o $@ $(filter %.o,$^) -lgcc
+
+$(RTTHREAD_SCHED_DIR)/rtthread_sched.bin: $(RTTHREAD_SCHED_DIR)/rtthread_sched.elf
+>$(RISCV_OBJCOPY) -O binary $< $@
+
+$(RTTHREAD_SCHED_O2_DIR)/rtthread_sched.bin: $(RTTHREAD_SCHED_O2_DIR)/rtthread_sched.elf
+>$(RISCV_OBJCOPY) -O binary $< $@
+
+$(RTTHREAD_SCHED_DIR)/rtthread_sched.hex: $(RTTHREAD_SCHED_DIR)/rtthread_sched.bin scripts/bin2hex.py
+>python3 scripts/bin2hex.py $< $@
+
+$(RTTHREAD_SCHED_O2_DIR)/rtthread_sched.hex: $(RTTHREAD_SCHED_O2_DIR)/rtthread_sched.bin scripts/bin2hex.py
+>python3 scripts/bin2hex.py $< $@
+
+$(RTTHREAD_SCHED_DIR)/rtthread_sched.symbols.hex: $(RTTHREAD_SCHED_DIR)/rtthread_sched.elf scripts/rtthread_symbols.py
+>python3 scripts/rtthread_symbols.py $(RISCV_PREFIX) $< $@ sched
+
+$(RTTHREAD_SCHED_O2_DIR)/rtthread_sched.symbols.hex: $(RTTHREAD_SCHED_O2_DIR)/rtthread_sched.elf scripts/rtthread_symbols.py
+>python3 scripts/rtthread_symbols.py $(RISCV_PREFIX) $< $@ sched
+
+$(RTTHREAD_SCHED_DIR)/rtthread_sched.dump: $(RTTHREAD_SCHED_DIR)/rtthread_sched.elf
+>$(RISCV_OBJDUMP) -d -M no-aliases $< > $@
+
+$(RTTHREAD_SCHED_O2_DIR)/rtthread_sched.dump: $(RTTHREAD_SCHED_O2_DIR)/rtthread_sched.elf
+>$(RISCV_OBJDUMP) -d -M no-aliases $< > $@
+
+$(RTTHREAD_SCHED_SIM): $(RTL) $(SOC_RTL) tb/tb_soc_rtthread_sched.sv
+>mkdir -p build/obj_rtthread_sched
+>$(VERILATOR) --binary --timing --trace -Wall -Wno-fatal \
+>    -Werror-IMPLICIT -Werror-UNDRIVEN --Mdir build/obj_rtthread_sched \
+>    --top-module tb_soc_rtthread_sched $(RTL) $(SOC_RTL) tb/tb_soc_rtthread_sched.sv
+
+.PHONY: rtthread-sched-test rtthread-sched-dump rtthread-sched-wave
+
+rtthread-sched-test: $(RTTHREAD_SCHED_DIR)/rtthread_sched.hex $(RTTHREAD_SCHED_DIR)/rtthread_sched.symbols.hex \
+    $(RTTHREAD_SCHED_DIR)/rtthread_sched.dump $(RTTHREAD_SCHED_O2_DIR)/rtthread_sched.hex \
+    $(RTTHREAD_SCHED_O2_DIR)/rtthread_sched.symbols.hex $(RTTHREAD_SCHED_O2_DIR)/rtthread_sched.dump $(RTTHREAD_SCHED_SIM)
+>./$(RTTHREAD_SCHED_SIM) +image=$(RTTHREAD_SCHED_DIR)/rtthread_sched.hex +symbols=$(RTTHREAD_SCHED_DIR)/rtthread_sched.symbols.hex +wave=$(RTTHREAD_SCHED_DIR)/rtthread_sched.vcd
+>./$(RTTHREAD_SCHED_SIM) +image=$(RTTHREAD_SCHED_O2_DIR)/rtthread_sched.hex +symbols=$(RTTHREAD_SCHED_O2_DIR)/rtthread_sched.symbols.hex +wave=$(RTTHREAD_SCHED_O2_DIR)/rtthread_sched.vcd
+>@echo "M11.3 RT-THREAD SCHEDULER O0/O2 CHECKS PASS"
+
+rtthread-sched-dump: $(RTTHREAD_SCHED_DIR)/rtthread_sched.dump
+>cat $(RTTHREAD_SCHED_DIR)/rtthread_sched.dump
+
+rtthread-sched-wave: rtthread-sched-test
+>gtkwave $(RTTHREAD_SCHED_DIR)/rtthread_sched.vcd &
+
+
 TB := tb/tb_rv32i.sv
 
 

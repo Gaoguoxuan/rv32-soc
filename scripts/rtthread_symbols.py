@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the linked firmware ISA and export console/start-test symbols."""
+"""Check the linked firmware ISA and export RT-Thread test symbols."""
 
 import re
 import subprocess
@@ -20,6 +20,19 @@ def main():
                  "probe", "stack_a", "stack_b", "arguments", "current", "entries", "exits",
                  "data_cookie", "stack_guard", "__stack_bottom", "__stack_top")
         strong = ("rt_hw_stack_init", "rt_hw_context_switch_to")
+    elif mode == "sched":
+        names = ("rt_hw_context_switch_to", "rt_hw_context_switch",
+                 "rt_hw_context_switch_interrupt", "rt_system_scheduler_start",
+                 "rt_thread_yield", "sched_entry", "finish_entry", "_thread_exit",
+                 "thread_locations", "stack_a", "stack_b", "stack_check", "rounds",
+                 "normal_returns", "critical_passes", "trace", "trace_count",
+                 "data_cookie", "stack_guard", "__stack_bottom", "__stack_top",
+                 "rt_current_thread", "rt_interrupt_nest", "rt_interrupt_from_thread",
+                 "rt_interrupt_to_thread", "rt_thread_switch_interrupt_flag",
+                 "rt_schedule", "rt_thread_init", "rt_thread_startup", "arguments")
+        strong = ("rt_hw_context_switch_to", "rt_hw_context_switch",
+                  "rt_hw_context_switch_interrupt", "rt_system_scheduler_start",
+                  "rt_thread_yield", "rt_schedule", "rt_thread_init", "rt_thread_startup")
     else:
         raise SystemExit(f"Unknown RT-Thread test mode: {mode}")
     symbols = {}
