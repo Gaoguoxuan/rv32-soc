@@ -26,6 +26,7 @@ SOC_RTL := \
     rtl/soc/simple_ram.sv \
     rtl/soc/uart_mmio.sv \
     rtl/soc/simple_rom.sv \
+    rtl/soc/timer_mmio.sv \
     rtl/soc/rv32_soc.sv
 
 # ============================================================
@@ -455,6 +456,69 @@ timer-wave: timer-test
 >gtkwave build/timer/timer.vcd &
 
 
+# ============================================================
+# M9.2 SoC timer polling program
+# Reuse the UART image's startup code and ROM/RAM linker map.
+# ============================================================
+
+SOC_TIMER_DIR := build/soc_timer
+SOC_TIMER_SRC := sw/timer/main.c
+SOC_TIMER_START := sw/uart/start.S
+SOC_TIMER_LDS := sw/uart/link.ld
+
+SOC_TIMER_ELF  := $(SOC_TIMER_DIR)/soc_timer.elf
+SOC_TIMER_BIN  := $(SOC_TIMER_DIR)/soc_timer.bin
+SOC_TIMER_HEX  := $(SOC_TIMER_DIR)/soc_timer.hex
+SOC_TIMER_DUMP := $(SOC_TIMER_DIR)/soc_timer.dump
+SOC_TIMER_MAP  := $(SOC_TIMER_DIR)/soc_timer.map
+SOC_TIMER_SIM  := build/obj_soc_timer/Vtb_soc_timer
+
+$(SOC_TIMER_ELF): $(SOC_TIMER_SRC) $(SOC_TIMER_START) $(SOC_TIMER_LDS)
+>mkdir -p $(SOC_TIMER_DIR)
+>$(RISCV_GCC) \
+>    $(UART_CFLAGS) \
+>    -Wall -Wextra \
+>    -Wl,-T,$(SOC_TIMER_LDS) \
+>    -Wl,--no-relax \
+>    -Wl,-Map,$(SOC_TIMER_MAP) \
+>    -o $(SOC_TIMER_ELF) \
+>    $(SOC_TIMER_START) $(SOC_TIMER_SRC)
+
+$(SOC_TIMER_BIN): $(SOC_TIMER_ELF)
+>$(RISCV_OBJCOPY) -O binary $(SOC_TIMER_ELF) $(SOC_TIMER_BIN)
+
+$(SOC_TIMER_HEX): $(SOC_TIMER_BIN) scripts/bin2hex.py
+>python3 scripts/bin2hex.py $(SOC_TIMER_BIN) $(SOC_TIMER_HEX)
+
+$(SOC_TIMER_DUMP): $(SOC_TIMER_ELF)
+>$(RISCV_OBJDUMP) -d -M no-aliases $(SOC_TIMER_ELF) > $(SOC_TIMER_DUMP)
+
+$(SOC_TIMER_SIM): $(RTL) $(SOC_RTL) tb/tb_soc_timer.sv
+>mkdir -p build/obj_soc_timer
+>$(VERILATOR) \
+>    --binary \
+>    --timing \
+>    --trace \
+>    -Wall \
+>    -Wno-fatal \
+>    --Mdir build/obj_soc_timer \
+>    --top-module tb_soc_timer \
+>    $(RTL) \
+>    $(SOC_RTL) \
+>    tb/tb_soc_timer.sv
+
+.PHONY: soc-timer-test soc-timer-dump soc-timer-wave
+
+soc-timer-test: $(SOC_TIMER_HEX) $(SOC_TIMER_DUMP) $(SOC_TIMER_SIM)
+>./$(SOC_TIMER_SIM)
+
+soc-timer-dump: $(SOC_TIMER_DUMP)
+>cat $(SOC_TIMER_DUMP)
+
+soc-timer-wave: soc-timer-test
+>gtkwave $(SOC_TIMER_DIR)/soc_timer.vcd &
+
+
 TB := tb/tb_rv32i.sv
 
 
@@ -684,6 +748,7 @@ clean:
 >rm -rf build/obj_csr
 >rm -rf build/obj_misaligned
 >rm -rf build/obj_timer
+>rm -rf build/obj_soc_timer
 >rm -rf build/asm
 >rm -rf build/c
 >rm -rf build/uart
@@ -691,3 +756,4 @@ clean:
 >rm -rf build/illegal
 >rm -rf build/misaligned
 >rm -rf build/timer
+>rm -rf build/soc_timer

@@ -44,6 +44,10 @@ module rv32_soc #(
 
     localparam logic [31:0] UART_TX  = 32'h2000_0000;
 
+    localparam logic [31:0] TIMER_BASE = 32'h3000_0000;
+
+    localparam logic [31:0] TIMER_END  = 32'h3000_000F;
+
     // ============================================================
     // Address select
     // ============================================================
@@ -51,6 +55,7 @@ module rv32_soc #(
     logic rom_sel;
     logic ram_sel;
     logic uart_sel;
+    logic timer_sel;
 
     // ============================================================
     // Peripheral read data
@@ -58,7 +63,9 @@ module rv32_soc #(
 
     logic [31:0] rom_rdata;
     logic [31:0] ram_rdata;
+    logic [31:0] timer_rdata;
 
+    logic        timer_irq;
 
     // ============================================================
     // CPU
@@ -111,8 +118,27 @@ module rv32_soc #(
 
         uart_sel = (mem_addr == UART_TX);
 
+        timer_sel = (mem_addr >= TIMER_BASE) &&
+                    (mem_addr <= TIMER_END);
+
     end
 
+    // ============================================================
+    // TIMER MMIO
+    // ============================================================
+
+    timer_mmio u_timer (
+        .clk       (clk),
+        .rst       (rst),
+
+        .addr      (mem_addr - TIMER_BASE),
+        .wdata     (mem_wdata),
+        .wstrb     (mem_wstrb),
+        .we        (mem_we && timer_sel),
+
+        .rdata     (timer_rdata),
+        .timer_irq (timer_irq)
+    );
 
     // ============================================================
     // RAM
@@ -169,6 +195,9 @@ module rv32_soc #(
 
         else if (ram_sel)
             mem_rdata = ram_rdata;
+
+        else if (timer_sel)
+            mem_rdata = timer_rdata;
 
         else
             mem_rdata = 32'b0;
