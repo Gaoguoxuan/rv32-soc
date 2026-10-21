@@ -109,6 +109,16 @@ def main():
         strong = names[:11] + ("rt_sem_init", "rt_sem_take", "rt_sem_release",
                                "rt_mutex_init", "rt_mutex_take", "rt_mutex_release",
                                "rt_thread_delay_until", "rt_hw_console_output")
+    elif mode == "input":
+        names = ("rt_hw_console_getchar", "rt_thread_delay", "rt_tick",
+                 "rt_current_thread", "rt_interrupt_nest", "input_locations",
+                 "received", "received_bytes", "received_ticks", "heartbeats",
+                 "before_input_beats", "gap_beats", "idle_hits", "receiver_done",
+                 "cleanup_done", "rt_hw_trap_entry", "rt_hw_trap_dispatch",
+                 "rt_hw_context_restore", "rt_hw_context_switch_to",
+                 "rt_hw_context_switch", "rt_hw_context_switch_interrupt",
+                 "rt_hw_tick_init", "rt_hw_tick_rearm", "rt_hw_console_output")
+        strong = (names[0], names[1]) + names[15:]
     else:
         raise SystemExit(f"Unknown RT-Thread test mode: {mode}")
     symbols = {}

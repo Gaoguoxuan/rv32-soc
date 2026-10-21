@@ -9,7 +9,7 @@ RT-Thread v4.1.1 移植。内核源码在 ../../third_party/rt-thread/，来源�
 - context.S：首次启动、线程切换和公共现场恢复代码，最后执行 mret。
 - trap.S：保存中断现场，调用 C 分发函数，再恢复选定线程。
 - tick.c：读取 mtime、设置 mtimecmp、初始化和停止系统 tick。
-- board.c：将控制台字符写入 0x20000000 的 UART MMIO。
+- board.c：控制台输出和输入；无输入时让接收线程延时 1 tick。
 - main.c：M11.1 控制台测试。
 - start_test.c：M11.2 初始栈和首次启动测试。
 - sched_test.c：M11.3 内核调度测试，A/B 主动让出，返回后由检查线程收尾。
@@ -18,6 +18,7 @@ RT-Thread v4.1.1 移植。内核源码在 ../../third_party/rt-thread/，来源�
 - sem_test.c：M11.6 信号量测试，生产者释放后由高优先级消费者先运行。
 - mutex_test.c：M11.7 互斥锁测试，检查递归持锁、优先级继承和释放后的调度顺序。
 - demo.c：M11.8 持续运行的生产者、消费者和心跳线程。
+- input_test.c：接收线程等待和读取字符，低优先级心跳线程继续运行。
 - link.ld / start_test.ld / sched_test.ld：各固件均使用 64 KiB ROM/RAM；调度及之后的测试和演示共用 sched_test.ld。
 
 编译使用 rv32i_zicsr / ilp32 和 RV32I libgcc。scripts/rtthread_symbols.py
@@ -34,9 +35,10 @@ make rtthread-delay-test
 make rtthread-sem-test
 make rtthread-mutex-test
 make rtthread-demo-test
+make rtthread-input-test
 ```
 
-八个测试都分别运行 -O0 和 -O2 版本。
+九个测试都分别运行 -O0 和 -O2 版本。
 rtthread-test 检查版本输出、格式化、缓冲区边界和中断接口。
 rtthread-start-test 检查 16 种栈尾位置，再依次启动 A、B，并验证正常返回到退出函数。
 rtthread-sched-test 链接 object、thread、scheduler、timer、clock、irq、idle 和 kservice。
@@ -68,6 +70,15 @@ rtthread-demo-test 运行 205 个 tick，检查 20 条连续样本和 8 次心�
 每 50 tick 两个周期线程同时到期，检查重复调度请求保留最初来源和最终目标。
 结束观察时三个应用线程仍在等待后续工作，idle 正在运行，tick、MTIE 和 MIE 均保持开启。
 固件持续运行，由 testbench 结束仿真。
+
+rtthread-input-test 验证 rt_hw_console_getchar()，由一个线程读取输入。
+无字符时调用 rt_thread_delay(1)，已有字符时先读取数据，再写 ACK。
+输入函数在调度器和 tick 启动后使用。
+testbench 在第 5 次定时器中断后连续送入 7 个字节，第 11 次中断后送入 Z。
+检查 NUL、0xFF、0x80、ACK 同拍接收，以及连续 6 次读取不调用 delay。
+等待期间心跳线程每 2 tick 运行；共记录 8 次心跳，其中输入前 2 次、间隔中 3 次。
+还检查 idle 运行、接收线程正常退出和清理，以及各线程栈底保护字。
+输入由 testbench 提供，目前还没有连接键盘或 msh。
 
 只构建演示固件可运行 make rtthread-demo，产物在 build/rtthread_demo_o2/。
 rtthread_demo.elf 用于调试，rtthread_demo.bin 是 ROM 映像，rtthread_demo.hex 用于当前仿真 ROM。
