@@ -1,6 +1,6 @@
 RT-Thread v4.1.1 移植。内核源码在 ../../third_party/rt-thread/，来源见其中的 UPSTREAM.md。
 
-目前已验证线程启动、主动切换、定时器抢占、延时唤醒、静态信号量和 idle 清理。
+目前已验证线程启动、主动切换、定时器抢占、延时唤醒、静态信号量、互斥锁优先级继承和 idle 清理。
 
 文件对应关系：
 
@@ -16,7 +16,8 @@ RT-Thread v4.1.1 移植。内核源码在 ../../third_party/rt-thread/，来源�
 - tick_test.c：M11.4 定时器抢占测试，A/B 只计算，不调用 yield 或 delay。
 - delay_test.c：M11.5 延时测试，A/B 定期唤醒，idle 运行并清理退出线程。
 - sem_test.c：M11.6 信号量测试，生产者释放后由高优先级消费者先运行。
-- link.ld / start_test.ld / sched_test.ld：各测试均使用 64 KiB ROM/RAM；调度、tick、延时和信号量测试共用 sched_test.ld。
+- mutex_test.c：M11.7 互斥锁测试，检查递归持锁、优先级继承和释放后的调度顺序。
+- link.ld / start_test.ld / sched_test.ld：各测试均使用 64 KiB ROM/RAM；调度、tick、延时、信号量和互斥锁测试共用 sched_test.ld。
 
 编译使用 rv32i_zicsr / ilp32 和 RV32I libgcc。scripts/rtthread_symbols.py
 检查链接后的指令，包括 libgcc 中的代码。
@@ -30,9 +31,10 @@ make rtthread-sched-test
 make rtthread-tick-test
 make rtthread-delay-test
 make rtthread-sem-test
+make rtthread-mutex-test
 ```
 
-六个测试都分别运行 -O0 和 -O2 版本。
+七个测试都分别运行 -O0 和 -O2 版本。
 rtthread-test 检查版本输出、格式化、缓冲区边界和中断接口。
 rtthread-start-test 检查 16 种栈尾位置，再依次启动 A、B，并验证正常返回到退出函数。
 rtthread-sched-test 链接 object、thread、scheduler、timer、clock、irq、idle 和 kservice。
@@ -48,6 +50,15 @@ rtthread-sem-test 增加 ipc.c，使用静态信号量，不启用堆。
 生产者在第 2/4/6 tick 释放信号量，每次都由消费者先运行，生产者再从 release 返回。
 两次带 5 tick 超时的等待被提前唤醒，核对定时器停用且移出链表；最后一次等待在第 8 tick 返回 -RT_ETIMEOUT。
 还检查非阻塞获取、无人等待时的计数增加和消耗、静态信号量 detach、12 次中断和 26 次完整现场恢复。
+rtthread-mutex-test 使用一把静态锁，H/M/L 的优先级分别为 10/11/12。
+H、M 先延时，L 在此期间递归获取两次；H 等锁时，L 继承优先级 10，先于已就绪的 M 运行。
+第一次释放保留持有者和继承优先级，最后一次释放将锁交给 H，并将 L 恢复为 12。
+H、M 均在 L 的最后一次 release 返回前运行。还检查非持有者释放失败、非阻塞获取失败、锁恢复空闲和 detach。
+线程优先级、锁字段和等待队列通过字段地址检查，不依赖结构体偏移。
+该版本已删除线程的 init_priority 字段；本测试检查 current_priority 和锁的 original_priority。
+延时到期只表示进入就绪队列，实际返回还受优先级影响；测试分别检查定时器到期和线程恢复。
+当前 -O0 检查 9 次中断、17 次现场恢复，-O2 检查 8 次中断、16 次现场恢复。
+每次均逐项检查 31 个通用寄存器、返回位置和 mstatus。
 
 调度测试创建 idle 线程；A/B 退出后由优先级更高的检查线程运行并结束测试。
 启动测试直接调用 CPU 端口，调度测试通过 rt_system_scheduler_start() 启动内核。
@@ -55,7 +66,7 @@ tick 测试也创建 idle 线程，最后由检查线程收尾。
 延时测试通过 idle_hook 记录 idle 运行，并检查两个 cleanup 回调均由 idle 执行。
 静态线程清理后，线程对象类型变为 Null，原来的栈和控制块仍由测试程序持有。
 
-tick、延时和信号量测试的时钟为 10 MHz，RT_TICK_PER_SECOND 为 1000，每 tick 为 10000 个计数。
+tick、延时、信号量和互斥锁测试的时钟为 10 MHz，RT_TICK_PER_SECOND 为 1000，每 tick 为 10000 个计数。
 rt_hw_tick_init() 在启动调度器前调用，保持 MIE=0，由首次 mret 开中断。
 中断处理全程保持 MIE=0，调度请求在 C 函数返回前处理，再由汇编切换栈。
 比较值按上次截止时间累加；错过下个截止时间会停止并报错，目前不补偿丢失的 tick。
@@ -65,4 +76,4 @@ tick_test.c 在初始化 tick 前设置 mtime，以覆盖低 32 位回绕；驱�
 反汇编和波形可用 rtthread-dump / rtthread-wave、
 rtthread-start-dump / rtthread-start-wave、rtthread-sched-dump / rtthread-sched-wave、
 rtthread-tick-dump / rtthread-tick-wave、rtthread-delay-dump / rtthread-delay-wave、
-rtthread-sem-dump / rtthread-sem-wave 查看。
+rtthread-sem-dump / rtthread-sem-wave、rtthread-mutex-dump / rtthread-mutex-wave 查看。
