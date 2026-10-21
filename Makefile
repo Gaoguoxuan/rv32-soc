@@ -124,6 +124,27 @@ uart-wave: uart-test
 >gtkwave build/uart/uart.vcd &
 
 # ============================================================
+# Console RX mailbox (standalone, before SoC integration)
+# ============================================================
+
+CONSOLE_RX_SIM := build/obj_console_rx/Vtb_console_rx
+
+$(CONSOLE_RX_SIM): rtl/soc/console_rx.sv tb/tb_console_rx.sv
+>mkdir -p build/obj_console_rx
+>$(VERILATOR) --binary --timing -Wall -Wno-UNUSEDSIGNAL \
+>    --Mdir build/obj_console_rx --top-module tb_console_rx \
+>    rtl/soc/console_rx.sv tb/tb_console_rx.sv
+
+.PHONY: console-rx-test console-rx-lint
+
+console-rx-test: $(CONSOLE_RX_SIM)
+>./$(CONSOLE_RX_SIM)
+
+console-rx-lint:
+>$(VERILATOR) --lint-only -Wall -Wno-UNUSEDSIGNAL \
+>    --top-module console_rx rtl/soc/console_rx.sv
+
+# ============================================================
 # Zicsr assembly test
 # ============================================================
 
