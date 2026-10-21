@@ -1281,6 +1281,74 @@ rtthread-delay-wave: rtthread-delay-test
 >gtkwave $(RTTHREAD_DELAY_DIR)/rtthread_delay.vcd &
 
 
+# ============================================================
+# M11.6 RT-Thread static semaphore handoff, cancellation and timeout
+# ============================================================
+
+RTTHREAD_SEM_DIR := build/rtthread_sem
+RTTHREAD_SEM_O2_DIR := build/rtthread_sem_o2
+RTTHREAD_SEM_SHARED := $(RTTHREAD_START_SHARED) tick.o sem_test.o ipc.o \
+    $(addsuffix .o,$(RTTHREAD_SCHED_KERNEL))
+RTTHREAD_SEM_SIM := build/obj_rtthread_sem/Vtb_soc_rtthread_sem
+
+$(RTTHREAD_SEM_DIR)/rtthread_sem.elf: $(addprefix $(RTTHREAD_DIR)/,$(RTTHREAD_SEM_SHARED)) \
+    $(RTTHREAD_START_DIR)/context.o $(RTTHREAD_TICK_DIR)/trap.o sw/rtthread/sched_test.ld
+>mkdir -p $(RTTHREAD_SEM_DIR)
+>$(RISCV_GCC) $(RTTHREAD_FLAGS) -O0 -Wl,-T,sw/rtthread/sched_test.ld -Wl,--no-relax \
+>    -Wl,--gc-sections -Wl,-Map,$(RTTHREAD_SEM_DIR)/rtthread_sem.map -o $@ $(filter %.o,$^) -lgcc
+
+$(RTTHREAD_SEM_DIR)/rtthread_sem.bin: $(RTTHREAD_SEM_DIR)/rtthread_sem.elf
+>$(RISCV_OBJCOPY) -O binary $< $@
+
+$(RTTHREAD_SEM_DIR)/rtthread_sem.hex: $(RTTHREAD_SEM_DIR)/rtthread_sem.bin scripts/bin2hex.py
+>python3 scripts/bin2hex.py $< $@
+
+$(RTTHREAD_SEM_DIR)/rtthread_sem.symbols.hex: $(RTTHREAD_SEM_DIR)/rtthread_sem.elf scripts/rtthread_symbols.py
+>python3 scripts/rtthread_symbols.py $(RISCV_PREFIX) $< $@ sem
+
+$(RTTHREAD_SEM_DIR)/rtthread_sem.dump: $(RTTHREAD_SEM_DIR)/rtthread_sem.elf
+>$(RISCV_OBJDUMP) -d -M no-aliases $< > $@
+
+$(RTTHREAD_SEM_O2_DIR)/rtthread_sem.elf: $(addprefix $(RTTHREAD_O2_DIR)/,$(RTTHREAD_SEM_SHARED)) \
+    $(RTTHREAD_START_O2_DIR)/context.o $(RTTHREAD_TICK_O2_DIR)/trap.o sw/rtthread/sched_test.ld
+>mkdir -p $(RTTHREAD_SEM_O2_DIR)
+>$(RISCV_GCC) $(RTTHREAD_FLAGS) -O2 -Wl,-T,sw/rtthread/sched_test.ld -Wl,--no-relax \
+>    -Wl,--gc-sections -Wl,-Map,$(RTTHREAD_SEM_O2_DIR)/rtthread_sem.map -o $@ $(filter %.o,$^) -lgcc
+
+$(RTTHREAD_SEM_O2_DIR)/rtthread_sem.bin: $(RTTHREAD_SEM_O2_DIR)/rtthread_sem.elf
+>$(RISCV_OBJCOPY) -O binary $< $@
+
+$(RTTHREAD_SEM_O2_DIR)/rtthread_sem.hex: $(RTTHREAD_SEM_O2_DIR)/rtthread_sem.bin scripts/bin2hex.py
+>python3 scripts/bin2hex.py $< $@
+
+$(RTTHREAD_SEM_O2_DIR)/rtthread_sem.symbols.hex: $(RTTHREAD_SEM_O2_DIR)/rtthread_sem.elf scripts/rtthread_symbols.py
+>python3 scripts/rtthread_symbols.py $(RISCV_PREFIX) $< $@ sem
+
+$(RTTHREAD_SEM_O2_DIR)/rtthread_sem.dump: $(RTTHREAD_SEM_O2_DIR)/rtthread_sem.elf
+>$(RISCV_OBJDUMP) -d -M no-aliases $< > $@
+
+$(RTTHREAD_SEM_SIM): $(RTL) $(SOC_RTL) tb/tb_soc_rtthread_sem.sv
+>mkdir -p build/obj_rtthread_sem
+>$(VERILATOR) --binary --timing --trace --timescale 1ns/1ps -Wall -Wno-fatal \
+>    -Werror-IMPLICIT -Werror-UNDRIVEN --Mdir build/obj_rtthread_sem \
+>    --top-module tb_soc_rtthread_sem $(RTL) $(SOC_RTL) tb/tb_soc_rtthread_sem.sv
+
+.PHONY: rtthread-sem-test rtthread-sem-dump rtthread-sem-wave
+
+rtthread-sem-test: $(RTTHREAD_SEM_DIR)/rtthread_sem.hex $(RTTHREAD_SEM_DIR)/rtthread_sem.symbols.hex \
+    $(RTTHREAD_SEM_DIR)/rtthread_sem.dump $(RTTHREAD_SEM_O2_DIR)/rtthread_sem.hex \
+    $(RTTHREAD_SEM_O2_DIR)/rtthread_sem.symbols.hex $(RTTHREAD_SEM_O2_DIR)/rtthread_sem.dump $(RTTHREAD_SEM_SIM)
+>./$(RTTHREAD_SEM_SIM) +image=$(RTTHREAD_SEM_DIR)/rtthread_sem.hex +symbols=$(RTTHREAD_SEM_DIR)/rtthread_sem.symbols.hex +wave=$(RTTHREAD_SEM_DIR)/rtthread_sem.vcd
+>./$(RTTHREAD_SEM_SIM) +image=$(RTTHREAD_SEM_O2_DIR)/rtthread_sem.hex +symbols=$(RTTHREAD_SEM_O2_DIR)/rtthread_sem.symbols.hex +wave=$(RTTHREAD_SEM_O2_DIR)/rtthread_sem.vcd
+>@echo "M11.6 RT-THREAD SEMAPHORE O0/O2 CHECKS PASS"
+
+rtthread-sem-dump: $(RTTHREAD_SEM_DIR)/rtthread_sem.dump
+>cat $(RTTHREAD_SEM_DIR)/rtthread_sem.dump
+
+rtthread-sem-wave: rtthread-sem-test
+>gtkwave $(RTTHREAD_SEM_DIR)/rtthread_sem.vcd &
+
+
 TB := tb/tb_rv32i.sv
 
 
