@@ -1,6 +1,7 @@
 RT-Thread v4.1.1 移植。内核源码在 ../../third_party/rt-thread/，来源见其中的 UPSTREAM.md。
 
 目前已验证线程启动、主动切换、定时器抢占、延时唤醒、静态信号量、互斥锁优先级继承和 idle 清理。
+交互命令行使用同版本的 FinSH/msh，在本机终端通过 Verilator 运行。
 
 文件对应关系：
 
@@ -19,6 +20,9 @@ RT-Thread v4.1.1 移植。内核源码在 ../../third_party/rt-thread/，来源�
 - mutex_test.c：M11.7 互斥锁测试，检查递归持锁、优先级继承和释放后的调度顺序。
 - demo.c：M11.8 持续运行的生产者、消费者和心跳线程。
 - input_test.c：接收线程等待和读取字符，低优先级心跳线程继续运行。
+- shell_main.c：启动 msh，注册 hello 和 ticks 命令。
+- shell.ld：shell 的链接脚本，保留 FSymTab 命令表。
+- finsh_compat/：shell 使用的少量 C 库接口，字符串操作使用 rt_* 函数。
 - link.ld / start_test.ld / sched_test.ld：各固件均使用 64 KiB ROM/RAM；调度及之后的测试和演示共用 sched_test.ld。
 
 编译使用 rv32i_zicsr / ilp32 和 RV32I libgcc。scripts/rtthread_symbols.py
@@ -36,9 +40,10 @@ make rtthread-sem-test
 make rtthread-mutex-test
 make rtthread-demo-test
 make rtthread-input-test
+make rtthread-shell-test
 ```
 
-九个测试都分别运行 -O0 和 -O2 版本。
+十个测试都分别运行 -O0 和 -O2 版本。
 rtthread-test 检查版本输出、格式化、缓冲区边界和中断接口。
 rtthread-start-test 检查 16 种栈尾位置，再依次启动 A、B，并验证正常返回到退出函数。
 rtthread-sched-test 链接 object、thread、scheduler、timer、clock、irq、idle 和 kservice。
@@ -78,7 +83,27 @@ testbench 在第 5 次定时器中断后连续送入 7 个字节，第 11 次中
 检查 NUL、0xFF、0x80、ACK 同拍接收，以及连续 6 次读取不调用 delay。
 等待期间心跳线程每 2 tick 运行；共记录 8 次心跳，其中输入前 2 次、间隔中 3 次。
 还检查 idle 运行、接收线程正常退出和清理，以及各线程栈底保护字。
-输入由 testbench 提供，目前还没有连接键盘或 msh。
+这个输入测试的字符由 testbench 提供。
+
+运行交互命令行：
+
+```bash
+make rtthread-shell
+```
+
+看到 msh > 后输入 help、hello、ps、ticks 或 version，再按回车。
+ps 显示 tshell 和 tidle0 两个线程；多次执行 ticks 可以看到系统 tick 增长。
+退格、Tab 补全和方向键历史记录均可使用。按 Ctrl-C 退出并恢复终端设置。
+
+make rtthread-shell-build 只构建，-O2 固件在 build/rtthread_shell_o2/。
+主机程序 sim/rtthread_shell.cpp 只将键盘字节送入 RX MMIO，并显示 UART TX 输出。
+命令解析和执行发生在 RTL CPU 上；等待键盘时仿真和系统 tick 继续运行。
+也可以通过管道输入命令，EOF 后再运行 10 ms 仿真时间以输出最后的结果。
+
+rtthread-shell-test 使用伪终端和管道分别运行两个优化版本，检查 help、hello、
+ps、version、ticks、未知命令、编辑、历史记录和退出后的终端恢复。
+shell 的所有目标文件使用 RV32_SOC_SHELL 配置，单独存放在构建目录。
+链接脚本通过 KEEP(*(FSymTab)) 保留命令表，链接后仍检查 RV32I/Zicsr 指令。
 
 只构建演示固件可运行 make rtthread-demo，产物在 build/rtthread_demo_o2/。
 rtthread_demo.elf 用于调试，rtthread_demo.bin 是 ROM 映像，rtthread_demo.hex 用于当前仿真 ROM。

@@ -119,6 +119,14 @@ def main():
                  "rt_hw_context_switch", "rt_hw_context_switch_interrupt",
                  "rt_hw_tick_init", "rt_hw_tick_rearm", "rt_hw_console_output")
         strong = (names[0], names[1]) + names[15:]
+    elif mode == "shell":
+        names = ("finsh_system_init", "finsh_thread_entry", "msh_exec", "msh_help",
+                 "cmd_ps", "list_thread", "hello", "ticks", "__fsymtab_start",
+                 "__fsymtab_end", "rt_hw_console_getchar", "rt_hw_console_output",
+                 "rt_hw_trap_entry", "rt_hw_trap_dispatch", "rt_hw_context_restore",
+                 "rt_hw_context_switch_to", "rt_hw_context_switch",
+                 "rt_hw_context_switch_interrupt", "rt_hw_tick_init", "rt_hw_tick_rearm")
+        strong = names[:6] + names[10:]
     else:
         raise SystemExit(f"Unknown RT-Thread test mode: {mode}")
     symbols = {}
@@ -134,6 +142,12 @@ def main():
     for name in strong:
         if types[name] != "T":
             raise SystemExit(f"Expected a strong port implementation: {name} ({types[name]})")
+
+    if mode == "shell":
+        start, end = symbols["__fsymtab_start"], symbols["__fsymtab_end"]
+        if not 0 <= start < end <= 65536 or (end - start) % 12:
+            raise SystemExit("Invalid RV32 FinSH command table")
+        print(f"[PASS] {elf}: {(end - start) // 12} retained FinSH commands")
 
     # Include libgcc in this check: the CPU has no M/A/F/D/C instructions.
     allowed_opcodes = {0x03, 0x13, 0x17, 0x23, 0x33, 0x37, 0x63, 0x67, 0x6f, 0x73}

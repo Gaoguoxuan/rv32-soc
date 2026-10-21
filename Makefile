@@ -1611,6 +1611,105 @@ rtthread-input-test: $(RTTHREAD_INPUT_ELFS:.elf=.hex) $(RTTHREAD_INPUT_ELFS:.elf
 >    +symbols=$(RTTHREAD_INPUT_O2_DIR)/rtthread_input.symbols.hex
 >@echo "RT-THREAD INPUT O0/O2 CHECKS PASS"
 
+# ============================================================
+# FinSH/msh firmware; all objects use the shell configuration
+# ============================================================
+
+FINSH_ROOT := $(RTTHREAD_ROOT)/components/finsh
+RTTHREAD_SHELL_DIR := build/rtthread_shell
+RTTHREAD_SHELL_O2_DIR := build/rtthread_shell_o2
+RTTHREAD_SHELL_ELFS := $(addsuffix /rtthread_shell.elf,$(RTTHREAD_SHELL_DIR) $(RTTHREAD_SHELL_O2_DIR))
+RTTHREAD_SHELL_NAMES := start cpuport board kservice tick context trap shell_main \
+    $(RTTHREAD_SCHED_KERNEL) ipc shell msh msh_parse cmd
+RTTHREAD_SHELL_DEPS := $(RTTHREAD_DEPS) $(wildcard $(FINSH_ROOT)/*.h) \
+    $(wildcard sw/rtthread/finsh_compat/*.h)
+RTTHREAD_SHELL_FLAGS := $(RTTHREAD_FLAGS) -DRV32_SOC_SHELL \
+    -I$(FINSH_ROOT) -Isw/rtthread/finsh_compat -Wno-cast-function-type
+RTTHREAD_SHELL_UPSTREAM_FLAGS := $(filter-out -Wextra,$(RTTHREAD_SHELL_FLAGS))
+
+$(RTTHREAD_SHELL_DIR)/%.o: sw/rtthread/%.c $(RTTHREAD_SHELL_DEPS)
+>mkdir -p $(@D)
+>$(RISCV_GCC) $(RTTHREAD_SHELL_FLAGS) -O0 -c $< -o $@
+
+$(RTTHREAD_SHELL_O2_DIR)/%.o: sw/rtthread/%.c $(RTTHREAD_SHELL_DEPS)
+>mkdir -p $(@D)
+>$(RISCV_GCC) $(RTTHREAD_SHELL_FLAGS) -O2 -c $< -o $@
+
+$(RTTHREAD_SHELL_DIR)/%.o: $(RTTHREAD_ROOT)/src/%.c $(RTTHREAD_SHELL_DEPS)
+>mkdir -p $(@D)
+>$(RISCV_GCC) $(RTTHREAD_SHELL_UPSTREAM_FLAGS) -O0 -c $< -o $@
+
+$(RTTHREAD_SHELL_O2_DIR)/%.o: $(RTTHREAD_ROOT)/src/%.c $(RTTHREAD_SHELL_DEPS)
+>mkdir -p $(@D)
+>$(RISCV_GCC) $(RTTHREAD_SHELL_UPSTREAM_FLAGS) -O2 -c $< -o $@
+
+$(RTTHREAD_SHELL_DIR)/%.o: $(FINSH_ROOT)/%.c $(RTTHREAD_SHELL_DEPS)
+>mkdir -p $(@D)
+>$(RISCV_GCC) $(RTTHREAD_SHELL_UPSTREAM_FLAGS) -O0 -c $< -o $@
+
+$(RTTHREAD_SHELL_O2_DIR)/%.o: $(FINSH_ROOT)/%.c $(RTTHREAD_SHELL_DEPS)
+>mkdir -p $(@D)
+>$(RISCV_GCC) $(RTTHREAD_SHELL_UPSTREAM_FLAGS) -O2 -c $< -o $@
+
+$(RTTHREAD_SHELL_DIR)/%.o: sw/rtthread/%.S
+>mkdir -p $(@D)
+>$(RISCV_GCC) $(RTTHREAD_SHELL_FLAGS) -O0 -c $< -o $@
+
+$(RTTHREAD_SHELL_O2_DIR)/%.o: sw/rtthread/%.S
+>mkdir -p $(@D)
+>$(RISCV_GCC) $(RTTHREAD_SHELL_FLAGS) -O2 -c $< -o $@
+
+$(RTTHREAD_SHELL_DIR)/start.o: sw/uart/start.S
+>mkdir -p $(@D)
+>$(RISCV_GCC) $(RTTHREAD_SHELL_FLAGS) -O0 -c $< -o $@
+
+$(RTTHREAD_SHELL_O2_DIR)/start.o: sw/uart/start.S
+>mkdir -p $(@D)
+>$(RISCV_GCC) $(RTTHREAD_SHELL_FLAGS) -O2 -c $< -o $@
+
+$(RTTHREAD_SHELL_DIR)/rtthread_shell.elf: $(addprefix $(RTTHREAD_SHELL_DIR)/,$(addsuffix .o,$(RTTHREAD_SHELL_NAMES))) sw/rtthread/shell.ld
+>$(RISCV_GCC) $(RTTHREAD_SHELL_FLAGS) -O0 -Wl,-T,sw/rtthread/shell.ld -Wl,--no-relax \
+>    -Wl,--gc-sections -Wl,-Map,$(@:.elf=.map) -o $@ $(filter %.o,$^) -lgcc
+
+$(RTTHREAD_SHELL_O2_DIR)/rtthread_shell.elf: $(addprefix $(RTTHREAD_SHELL_O2_DIR)/,$(addsuffix .o,$(RTTHREAD_SHELL_NAMES))) sw/rtthread/shell.ld
+>$(RISCV_GCC) $(RTTHREAD_SHELL_FLAGS) -O2 -Wl,-T,sw/rtthread/shell.ld -Wl,--no-relax \
+>    -Wl,--gc-sections -Wl,-Map,$(@:.elf=.map) -o $@ $(filter %.o,$^) -lgcc
+
+$(RTTHREAD_SHELL_ELFS:.elf=.bin): %.bin: %.elf
+>$(RISCV_OBJCOPY) -O binary $< $@
+
+$(RTTHREAD_SHELL_ELFS:.elf=.hex): %.hex: %.bin scripts/bin2hex.py
+>python3 scripts/bin2hex.py $< $@
+
+$(RTTHREAD_SHELL_ELFS:.elf=.symbols.hex): %.symbols.hex: %.elf scripts/rtthread_symbols.py
+>python3 scripts/rtthread_symbols.py $(RISCV_PREFIX) $< $@ shell
+
+$(RTTHREAD_SHELL_ELFS:.elf=.dump): %.dump: %.elf
+>$(RISCV_OBJDUMP) -d -M no-aliases $< > $@
+
+RTTHREAD_SHELL_SIM := build/obj_rtthread_shell/Vrtthread_shell
+
+$(RTTHREAD_SHELL_SIM): $(RTL) $(SOC_RTL) sim/rtthread_shell.sv sim/rtthread_shell.cpp
+>mkdir -p $(@D)
+>$(VERILATOR) --cc --exe --build --timescale 1ns/1ps -Wall -Wno-fatal \
+>    -Werror-PINMISSING -Werror-IMPLICIT -Werror-UNDRIVEN \
+>    -CFLAGS "-std=c++17 -Wall -Wextra" --Mdir build/obj_rtthread_shell \
+>    --top-module rtthread_shell $(RTL) $(SOC_RTL) sim/rtthread_shell.sv \
+>    $(abspath sim/rtthread_shell.cpp)
+
+.PHONY: rtthread-shell rtthread-shell-build rtthread-shell-test
+
+rtthread-shell-build: $(RTTHREAD_SHELL_O2_DIR)/rtthread_shell.hex \
+    $(RTTHREAD_SHELL_O2_DIR)/rtthread_shell.symbols.hex $(RTTHREAD_SHELL_O2_DIR)/rtthread_shell.dump \
+    $(RTTHREAD_SHELL_SIM)
+
+rtthread-shell: rtthread-shell-build
+>./$(RTTHREAD_SHELL_SIM) +image=$(RTTHREAD_SHELL_O2_DIR)/rtthread_shell.hex
+
+rtthread-shell-test: $(RTTHREAD_SHELL_ELFS:.elf=.hex) $(RTTHREAD_SHELL_ELFS:.elf=.symbols.hex) \
+    $(RTTHREAD_SHELL_ELFS:.elf=.dump) $(RTTHREAD_SHELL_SIM) scripts/check_rtthread_shell.py
+>python3 scripts/check_rtthread_shell.py $(RTTHREAD_SHELL_SIM) $(RTTHREAD_SHELL_ELFS:.elf=.hex)
+
 TB := tb/tb_rv32i.sv
 
 
