@@ -59,24 +59,90 @@ def test_terminal(simulator, image):
         require(match, f"Missing tick output: {response!r}")
         return int(match[1])
 
+    def read_stats():
+        response = command(b"stats\n")
+        match = re.search(rb"tick=(\d+) running=([01]) count=(\d+)", response)
+        require(match, f"Missing worker statistics: {response!r}")
+        return tuple(int(value) for value in match.groups())
+
+    def wait_stats(before, running, frozen_count=None):
+        # Advance by guest ticks, so the check remains valid on slower hosts.
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            time.sleep(0.02)
+            sample = read_stats()
+            require(sample[1] == running, f"Wrong worker state: {sample}")
+            require(sample[2] >= before[2], f"Worker count went backwards: {before} -> {sample}")
+            if frozen_count is not None:
+                require(sample[2] == frozen_count,
+                        f"Count changed while paused: {frozen_count} -> {sample[2]}")
+            if sample[0] - before[0] >= 40:
+                return sample
+        raise AssertionError(f"Guest tick did not advance by 40 from {before}")
+
+    def check_growth(before, after):
+        increment = after[2] - before[2]
+        # A relative 10-tick delay permits at most this many increments;
+        # shell activity may postpone the worker's actual execution.
+        require(0 < increment <= (after[0] - before[0]) // 10 + 1,
+                f"Wrong worker progress: {before} -> {after}")
+
     try:
         boot = read_prompt()
         require(b"4.1.1" in boot, "Missing RT-Thread version")
         require(not termios.tcgetattr(slave)[3] & (termios.ICANON | termios.ECHO),
                 "Terminal input was not configured for individual keys")
         help_output = command(b"help\n")
-        for name in [b"hello", b"ticks", b"ps", b"version"]:
+        for name in [b"hello", b"ticks", b"ps", b"version", b"stats", b"pause", b"resume"]:
             require(re.search(rb"(?m)^" + name + rb"\s+-", help_output),
                     f"Command absent from help: {name!r}")
         require(command(b"hello\n").count(GREETING) == 1, "hello failed")
         processes = command(b"ps\n")
         require(re.search(rb"tshell\s+20\s+running", processes), "Missing running shell thread")
         require(re.search(rb"tidle0\s+31\s+ready", processes), "Missing ready idle thread")
+        worker_rows = re.findall(rb"(?m)^worker\s+21\s+(?:ready|suspend)\s+0x[0-9a-f]+\s+0x00000800\s+", processes)
+        require(len(worker_rows) == 1, "Missing worker thread with its 2 KiB stack")
         require(b"4.1.1" in command(b"version\n"), "version failed")
         first = read_tick()
         time.sleep(0.12)
         second = read_tick()
         require(second - first >= 3, f"Tick stopped while waiting for keys: {first} -> {second}")
+
+        active_before = read_stats()
+        require(active_before[1] == 1, f"Worker did not start enabled: {active_before}")
+        active_after = wait_stats(active_before, running=1)
+        check_growth(active_before, active_after)
+
+        require(b"worker paused\n" in command(b"pause\n"), "pause failed")
+        paused = read_stats()
+        require(paused[1] == 0 and paused[2] >= active_after[2], "pause reset the count or failed")
+        require(b"worker paused\n" in command(b"pause\n"), "Repeated pause failed")
+        paused_after = wait_stats(paused, running=0, frozen_count=paused[2])
+
+        require(b"worker resumed\n" in command(b"resume\n"), "resume failed")
+        resumed = read_stats()
+        require(resumed[1] == 1 and resumed[2] >= paused[2], "resume reset the count or failed")
+        require(b"worker resumed\n" in command(b"resume\n"), "Repeated resume failed")
+        resumed_after = wait_stats(resumed, running=1)
+        check_growth(resumed, resumed_after)
+
+        # Repeated control must preserve one worker and the accumulated count.
+        previous_count = resumed_after[2]
+        for _ in range(3):
+            require(b"worker paused\n" in command(b"pause\n"), "Rapid pause failed")
+            stopped = read_stats()
+            require(stopped[1] == 0 and stopped[2] >= previous_count, "Rapid pause lost state")
+            require(b"worker resumed\n" in command(b"resume\n"), "Rapid resume failed")
+            restarted = read_stats()
+            require(restarted[1] == 1 and restarted[2] >= stopped[2], "Rapid resume lost state")
+            previous_count = restarted[2]
+        processes = command(b"ps\n")
+        require(len(re.findall(rb"(?m)^worker\s+21\s+", processes)) == 1,
+                "Control commands created duplicate workers")
+        print(f"[PASS] {image}: worker count {active_before[2]}->{active_after[2]}, "
+              f"paused at {paused[2]} for {paused_after[0] - paused[0]} ticks, "
+              f"resumed {resumed[2]}->{resumed_after[2]}, repeated control")
+
         require(b"command not found" in command(b"no_such_cmd\n"), "Unknown command was not rejected")
         require(command(b"hellx\x7fo\n").count(GREETING) == 1, "Backspace editing failed")
         # Completion and history redraw the prompt before Enter executes the
@@ -111,13 +177,19 @@ def test_terminal(simulator, image):
 
 
 def test_pipe(simulator, image):
-    result = subprocess.run([simulator, f"+image={image}"], input=b"hello\nps\n",
+    commands = [b"hello", b"pause", b"stats", b"resume", b"stats", b"ps"]
+    result = subprocess.run([simulator, f"+image={image}"], input=b"\n".join(commands) + b"\n",
                             capture_output=True, timeout=20)
     require(result.returncode == 0, f"Pipe run failed: {result.stderr!r}")
     require(result.stdout.count(GREETING) == 1, "Pipe input was lost or repeated")
-    require(b"tshell" in result.stdout and result.stdout.count(PROMPT) == 3,
+    require(b"tshell" in result.stdout and b"worker" in result.stdout and
+            result.stdout.count(PROMPT) == len(commands) + 1,
             f"Pipe commands did not finish: {result.stdout!r}")
-    print(f"[PASS] {image}: pipe input, buffered commands and EOF exit")
+    states = re.findall(rb"tick=\d+ running=([01]) count=(\d+)", result.stdout)
+    require(len(states) == 2 and states[0][0] == b"0" and states[1][0] == b"1",
+            f"Pipe control commands failed: {result.stdout!r}")
+    require(int(states[1][1]) >= int(states[0][1]), "Pipe resume reset the count")
+    print(f"[PASS] {image}: pipe input, buffered control commands and EOF exit")
 
 
 def main():

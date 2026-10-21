@@ -20,7 +20,7 @@ RT-Thread v4.1.1 移植。内核源码在 ../../third_party/rt-thread/，来源�
 - mutex_test.c：M11.7 互斥锁测试，检查递归持锁、优先级继承和释放后的调度顺序。
 - demo.c：M11.8 持续运行的生产者、消费者和心跳线程。
 - input_test.c：接收线程等待和读取字符，低优先级心跳线程继续运行。
-- shell_main.c：启动 msh，注册 hello 和 ticks 命令。
+- shell_main.c：启动 msh 和后台计数线程，注册 hello、ticks、stats、pause、resume 命令。
 - shell.ld：shell 的链接脚本，保留 FSymTab 命令表。
 - finsh_compat/：shell 使用的少量 C 库接口，字符串操作使用 rt_* 函数。
 - link.ld / start_test.ld / sched_test.ld：各固件均使用 64 KiB ROM/RAM；调度及之后的测试和演示共用 sched_test.ld。
@@ -92,8 +92,15 @@ make rtthread-shell
 ```
 
 看到 msh > 后输入 help、hello、ps、ticks 或 version，再按回车。
-ps 显示 tshell 和 tidle0 两个线程；多次执行 ticks 可以看到系统 tick 增长。
+ps 显示 tshell、worker 和 tidle0 三个线程；多次执行 ticks 可以看到系统 tick 增长。
 退格、Tab 补全和方向键历史记录均可使用。按 Ctrl-C 退出并恢复终端设置。
+
+worker 的优先级是 21，每轮延时 10 tick，再根据开关决定是否增加计数。
+stats 输出 tick、running 和 count。pause 暂停计数，resume 恢复计数；
+暂停期间线程仍定期唤醒，系统 tick 继续增长，count 保持不变。
+重复 pause 或 resume 不会重置计数或创建新线程。
+开关判断和加一放在同一个临界区，stats 也在临界区内取得数据快照。
+打印发生在恢复中断之后，后台线程不打印。
 
 make rtthread-shell-build 只构建，-O2 固件在 build/rtthread_shell_o2/。
 主机程序 sim/rtthread_shell.cpp 只将键盘字节送入 RX MMIO，并显示 UART TX 输出。
@@ -102,6 +109,8 @@ make rtthread-shell-build 只构建，-O2 固件在 build/rtthread_shell_o2/。
 
 rtthread-shell-test 使用伪终端和管道分别运行两个优化版本，检查 help、hello、
 ps、version、ticks、未知命令、编辑、历史记录和退出后的终端恢复。
+还检查后台计数增长、暂停至少 40 tick 时计数保持不变、恢复计数、
+重复控制和 worker 的线程数量及栈大小。
 shell 的所有目标文件使用 RV32_SOC_SHELL 配置，单独存放在构建目录。
 链接脚本通过 KEEP(*(FSymTab)) 保留命令表，链接后仍检查 RV32I/Zicsr 指令。
 
