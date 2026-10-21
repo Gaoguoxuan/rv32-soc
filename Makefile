@@ -1417,6 +1417,78 @@ rtthread-mutex-wave: rtthread-mutex-test
 >gtkwave $(RTTHREAD_MUTEX_DIR)/rtthread_mutex.vcd &
 
 
+# ============================================================
+# M11.8 RT-Thread continuous producer/consumer and heartbeat demo
+# ============================================================
+
+RTTHREAD_DEMO_DIR := build/rtthread_demo
+RTTHREAD_DEMO_O2_DIR := build/rtthread_demo_o2
+RTTHREAD_DEMO_SHARED := $(RTTHREAD_START_SHARED) tick.o demo.o ipc.o \
+    $(addsuffix .o,$(RTTHREAD_SCHED_KERNEL))
+RTTHREAD_DEMO_SIM := build/obj_rtthread_demo/Vtb_soc_rtthread_demo
+
+$(RTTHREAD_DEMO_DIR)/rtthread_demo.elf: $(addprefix $(RTTHREAD_DIR)/,$(RTTHREAD_DEMO_SHARED)) \
+    $(RTTHREAD_START_DIR)/context.o $(RTTHREAD_TICK_DIR)/trap.o sw/rtthread/sched_test.ld
+>mkdir -p $(RTTHREAD_DEMO_DIR)
+>$(RISCV_GCC) $(RTTHREAD_FLAGS) -O0 -Wl,-T,sw/rtthread/sched_test.ld -Wl,--no-relax \
+>    -Wl,--gc-sections -Wl,-Map,$(RTTHREAD_DEMO_DIR)/rtthread_demo.map -o $@ $(filter %.o,$^) -lgcc
+
+$(RTTHREAD_DEMO_DIR)/rtthread_demo.bin: $(RTTHREAD_DEMO_DIR)/rtthread_demo.elf
+>$(RISCV_OBJCOPY) -O binary $< $@
+
+$(RTTHREAD_DEMO_DIR)/rtthread_demo.hex: $(RTTHREAD_DEMO_DIR)/rtthread_demo.bin scripts/bin2hex.py
+>python3 scripts/bin2hex.py $< $@
+
+$(RTTHREAD_DEMO_DIR)/rtthread_demo.symbols.hex: $(RTTHREAD_DEMO_DIR)/rtthread_demo.elf scripts/rtthread_symbols.py
+>python3 scripts/rtthread_symbols.py $(RISCV_PREFIX) $< $@ demo
+
+$(RTTHREAD_DEMO_DIR)/rtthread_demo.dump: $(RTTHREAD_DEMO_DIR)/rtthread_demo.elf
+>$(RISCV_OBJDUMP) -d -M no-aliases $< > $@
+
+$(RTTHREAD_DEMO_O2_DIR)/rtthread_demo.elf: $(addprefix $(RTTHREAD_O2_DIR)/,$(RTTHREAD_DEMO_SHARED)) \
+    $(RTTHREAD_START_O2_DIR)/context.o $(RTTHREAD_TICK_O2_DIR)/trap.o sw/rtthread/sched_test.ld
+>mkdir -p $(RTTHREAD_DEMO_O2_DIR)
+>$(RISCV_GCC) $(RTTHREAD_FLAGS) -O2 -Wl,-T,sw/rtthread/sched_test.ld -Wl,--no-relax \
+>    -Wl,--gc-sections -Wl,-Map,$(RTTHREAD_DEMO_O2_DIR)/rtthread_demo.map -o $@ $(filter %.o,$^) -lgcc
+
+$(RTTHREAD_DEMO_O2_DIR)/rtthread_demo.bin: $(RTTHREAD_DEMO_O2_DIR)/rtthread_demo.elf
+>$(RISCV_OBJCOPY) -O binary $< $@
+
+$(RTTHREAD_DEMO_O2_DIR)/rtthread_demo.hex: $(RTTHREAD_DEMO_O2_DIR)/rtthread_demo.bin scripts/bin2hex.py
+>python3 scripts/bin2hex.py $< $@
+
+$(RTTHREAD_DEMO_O2_DIR)/rtthread_demo.symbols.hex: $(RTTHREAD_DEMO_O2_DIR)/rtthread_demo.elf scripts/rtthread_symbols.py
+>python3 scripts/rtthread_symbols.py $(RISCV_PREFIX) $< $@ demo
+
+$(RTTHREAD_DEMO_O2_DIR)/rtthread_demo.dump: $(RTTHREAD_DEMO_O2_DIR)/rtthread_demo.elf
+>$(RISCV_OBJDUMP) -d -M no-aliases $< > $@
+
+$(RTTHREAD_DEMO_SIM): $(RTL) $(SOC_RTL) tb/tb_soc_rtthread_demo.sv
+>mkdir -p build/obj_rtthread_demo
+>$(VERILATOR) --binary --timing --trace --timescale 1ns/1ps -Wall -Wno-fatal \
+>    -Werror-IMPLICIT -Werror-UNDRIVEN --Mdir build/obj_rtthread_demo \
+>    --top-module tb_soc_rtthread_demo $(RTL) $(SOC_RTL) tb/tb_soc_rtthread_demo.sv
+
+.PHONY: rtthread-demo rtthread-demo-test rtthread-demo-dump rtthread-demo-wave
+
+rtthread-demo: $(RTTHREAD_DEMO_O2_DIR)/rtthread_demo.hex \
+    $(RTTHREAD_DEMO_O2_DIR)/rtthread_demo.symbols.hex $(RTTHREAD_DEMO_O2_DIR)/rtthread_demo.dump
+
+rtthread-demo-test: $(RTTHREAD_DEMO_DIR)/rtthread_demo.hex $(RTTHREAD_DEMO_DIR)/rtthread_demo.symbols.hex \
+    $(RTTHREAD_DEMO_DIR)/rtthread_demo.dump $(RTTHREAD_DEMO_O2_DIR)/rtthread_demo.hex \
+    $(RTTHREAD_DEMO_O2_DIR)/rtthread_demo.symbols.hex $(RTTHREAD_DEMO_O2_DIR)/rtthread_demo.dump $(RTTHREAD_DEMO_SIM)
+>./$(RTTHREAD_DEMO_SIM) +image=$(RTTHREAD_DEMO_DIR)/rtthread_demo.hex +symbols=$(RTTHREAD_DEMO_DIR)/rtthread_demo.symbols.hex
+>./$(RTTHREAD_DEMO_SIM) +image=$(RTTHREAD_DEMO_O2_DIR)/rtthread_demo.hex +symbols=$(RTTHREAD_DEMO_O2_DIR)/rtthread_demo.symbols.hex
+>@echo "M11.8 RT-THREAD DEMO O0/O2 CHECKS PASS"
+
+rtthread-demo-dump: $(RTTHREAD_DEMO_DIR)/rtthread_demo.dump
+>cat $(RTTHREAD_DEMO_DIR)/rtthread_demo.dump
+
+rtthread-demo-wave: rtthread-demo-test
+>./$(RTTHREAD_DEMO_SIM) +image=$(RTTHREAD_DEMO_DIR)/rtthread_demo.hex +symbols=$(RTTHREAD_DEMO_DIR)/rtthread_demo.symbols.hex +ticks=55 +wave=$(RTTHREAD_DEMO_DIR)/rtthread_demo.vcd
+>gtkwave $(RTTHREAD_DEMO_DIR)/rtthread_demo.vcd &
+
+
 TB := tb/tb_rv32i.sv
 
 

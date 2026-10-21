@@ -17,7 +17,8 @@ RT-Thread v4.1.1 移植。内核源码在 ../../third_party/rt-thread/，来源�
 - delay_test.c：M11.5 延时测试，A/B 定期唤醒，idle 运行并清理退出线程。
 - sem_test.c：M11.6 信号量测试，生产者释放后由高优先级消费者先运行。
 - mutex_test.c：M11.7 互斥锁测试，检查递归持锁、优先级继承和释放后的调度顺序。
-- link.ld / start_test.ld / sched_test.ld：各测试均使用 64 KiB ROM/RAM；调度、tick、延时、信号量和互斥锁测试共用 sched_test.ld。
+- demo.c：M11.8 持续运行的生产者、消费者和心跳线程。
+- link.ld / start_test.ld / sched_test.ld：各固件均使用 64 KiB ROM/RAM；调度及之后的测试和演示共用 sched_test.ld。
 
 编译使用 rv32i_zicsr / ilp32 和 RV32I libgcc。scripts/rtthread_symbols.py
 检查链接后的指令，包括 libgcc 中的代码。
@@ -32,9 +33,10 @@ make rtthread-tick-test
 make rtthread-delay-test
 make rtthread-sem-test
 make rtthread-mutex-test
+make rtthread-demo-test
 ```
 
-七个测试都分别运行 -O0 和 -O2 版本。
+八个测试都分别运行 -O0 和 -O2 版本。
 rtthread-test 检查版本输出、格式化、缓冲区边界和中断接口。
 rtthread-start-test 检查 16 种栈尾位置，再依次启动 A、B，并验证正常返回到退出函数。
 rtthread-sched-test 链接 object、thread、scheduler、timer、clock、irq、idle 和 kservice。
@@ -59,6 +61,17 @@ H、M 均在 L 的最后一次 release 返回前运行。还检查非持有者�
 延时到期只表示进入就绪队列，实际返回还受优先级影响；测试分别检查定时器到期和线程恢复。
 当前 -O0 检查 9 次中断、17 次现场恢复，-O2 检查 8 次中断、16 次现场恢复。
 每次均逐项检查 31 个通用寄存器、返回位置和 mstatus。
+rtthread-demo-test 运行 205 个 tick，检查 20 条连续样本和 8 次心跳。
+两个信号量管理单槽缓冲区，app_lock 保护统计数据和 rt_kprintf 的共享缓冲区。
+生产者每 10 tick 工作，心跳每 25 tick 工作，使用 delay_until 按计划时刻推进周期。
+仿真按 API 调用和定时器到期维护就绪线程模型，检查调度目标及每次完整现场恢复。
+每 50 tick 两个周期线程同时到期，检查重复调度请求保留最初来源和最终目标。
+结束观察时三个应用线程仍在等待后续工作，idle 正在运行，tick、MTIE 和 MIE 均保持开启。
+固件持续运行，由 testbench 结束仿真。
+
+只构建演示固件可运行 make rtthread-demo，产物在 build/rtthread_demo_o2/。
+rtthread_demo.elf 用于调试，rtthread_demo.bin 是 ROM 映像，rtthread_demo.hex 用于当前仿真 ROM。
+持续运行测试默认不记录波形；make rtthread-demo-wave 额外记录 55 tick 后打开波形。
 
 调度测试创建 idle 线程；A/B 退出后由优先级更高的检查线程运行并结束测试。
 启动测试直接调用 CPU 端口，调度测试通过 rt_system_scheduler_start() 启动内核。
@@ -66,7 +79,7 @@ tick 测试也创建 idle 线程，最后由检查线程收尾。
 延时测试通过 idle_hook 记录 idle 运行，并检查两个 cleanup 回调均由 idle 执行。
 静态线程清理后，线程对象类型变为 Null，原来的栈和控制块仍由测试程序持有。
 
-tick、延时、信号量和互斥锁测试的时钟为 10 MHz，RT_TICK_PER_SECOND 为 1000，每 tick 为 10000 个计数。
+tick 及之后的测试和演示时钟为 10 MHz，RT_TICK_PER_SECOND 为 1000，每 tick 为 10000 个计数。
 rt_hw_tick_init() 在启动调度器前调用，保持 MIE=0，由首次 mret 开中断。
 中断处理全程保持 MIE=0，调度请求在 C 函数返回前处理，再由汇编切换栈。
 比较值按上次截止时间累加；错过下个截止时间会停止并报错，目前不补偿丢失的 tick。
@@ -76,4 +89,5 @@ tick_test.c 在初始化 tick 前设置 mtime，以覆盖低 32 位回绕；驱�
 反汇编和波形可用 rtthread-dump / rtthread-wave、
 rtthread-start-dump / rtthread-start-wave、rtthread-sched-dump / rtthread-sched-wave、
 rtthread-tick-dump / rtthread-tick-wave、rtthread-delay-dump / rtthread-delay-wave、
-rtthread-sem-dump / rtthread-sem-wave、rtthread-mutex-dump / rtthread-mutex-wave 查看。
+rtthread-sem-dump / rtthread-sem-wave、rtthread-mutex-dump / rtthread-mutex-wave、
+rtthread-demo-dump / rtthread-demo-wave 查看。

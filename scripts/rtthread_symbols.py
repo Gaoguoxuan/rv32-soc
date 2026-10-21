@@ -90,6 +90,25 @@ def main():
                  "rt_mutex_detach", "rt_thread_delay", "_thread_timeout", "rt_thread_control")
         strong = names[:11] + ("rt_mutex_init", "rt_mutex_take", "rt_mutex_release",
                                "rt_mutex_detach", "rt_thread_control")
+    elif mode == "demo":
+        names = ("rt_hw_trap_entry", "rt_hw_trap_dispatch", "rt_hw_context_restore",
+                 "rt_hw_context_switch_to", "rt_hw_context_switch",
+                 "rt_hw_context_switch_interrupt", "rt_hw_tick_init", "rt_hw_tick_rearm",
+                 "rt_interrupt_enter", "rt_interrupt_leave", "rt_tick_increase", "rt_tick",
+                 "consumer_entry", "producer_entry", "heartbeat_entry", "_thread_exit",
+                 "thread_locations", "mutex_locations", "app_lock", "stack_a", "stack_b",
+                 "stack_check", "produced", "consumed", "heartbeats", "sample_slot",
+                 "sem_locations", "empty_slot", "full_slot", "idle_hits", "data_cookie",
+                 "stack_guard", "__stack_bottom", "__stack_top", "rt_current_thread",
+                 "rt_interrupt_nest", "rt_interrupt_from_thread", "rt_interrupt_to_thread",
+                 "rt_thread_switch_interrupt_flag", "rt_thread_idle_entry", "rt_thread_stack",
+                 "idle_hook", "rt_kprintf", "rt_sem_init", "rt_sem_take", "rt_sem_release",
+                 "rt_mutex_init", "rt_mutex_take", "rt_mutex_release", "rt_thread_delay_until",
+                 "_thread_timeout", "fail", "rt_hw_console_output", "rt_thread_suspend",
+                 "rt_thread_resume")
+        strong = names[:11] + ("rt_sem_init", "rt_sem_take", "rt_sem_release",
+                               "rt_mutex_init", "rt_mutex_take", "rt_mutex_release",
+                               "rt_thread_delay_until", "rt_hw_console_output")
     else:
         raise SystemExit(f"Unknown RT-Thread test mode: {mode}")
     symbols = {}
