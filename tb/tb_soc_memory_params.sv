@@ -9,7 +9,10 @@ module tb_soc_memory_params #(
         .ROM_BYTES (ROM_BYTES), .RAM_BYTES (RAM_BYTES)
     ) dut (
         .clk (clk), .rst (1'b1), .pc (pc),
-        .uart_tx_valid (), .uart_tx_data ()
+        .uart_tx_valid (), .uart_tx_data (),
+        .uart_rx_valid (1'b0),
+        .uart_rx_data  (8'b0),
+        .uart_rx_ready ()
     );
 
     initial begin

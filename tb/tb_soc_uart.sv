@@ -29,7 +29,10 @@ module tb_soc_uart;
         .pc            (pc),
 
         .uart_tx_valid (uart_tx_valid),
-        .uart_tx_data  (uart_tx_data)
+        .uart_tx_data  (uart_tx_data),
+        .uart_rx_valid (1'b0),
+        .uart_rx_data  (8'b0),
+        .uart_rx_ready ()
     );
 
     // ============================================================

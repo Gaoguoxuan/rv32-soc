@@ -61,7 +61,10 @@ module tb_soc_rtthread_sched;
 
     rv32_soc #(.ROM_BYTES(65536), .RAM_BYTES(65536)) dut (
         .clk (clk), .rst (rst), .pc (pc),
-        .uart_tx_valid (uart_tx_valid), .uart_tx_data (uart_tx_data)
+        .uart_tx_valid (uart_tx_valid), .uart_tx_data (uart_tx_data),
+        .uart_rx_valid (1'b0),
+        .uart_rx_data  (8'b0),
+        .uart_rx_ready ()
     );
 
     initial forever #5 clk = ~clk;

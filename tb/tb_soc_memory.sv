@@ -31,7 +31,10 @@ module tb_soc_memory;
         .RAM_BYTES (64 * 1024)
     ) dut (
         .clk (clk), .rst (rst), .pc (pc),
-        .uart_tx_valid (uart_tx_valid), .uart_tx_data (uart_tx_data)
+        .uart_tx_valid (uart_tx_valid), .uart_tx_data (uart_tx_data),
+        .uart_rx_valid (1'b0),
+        .uart_rx_data  (8'b0),
+        .uart_rx_ready ()
     );
 
     // Check instruction-fetch boundaries independently of CPU control flow.

@@ -11,7 +11,11 @@ module rv32_soc #(
     output logic [31:0] pc,
 
     output logic        uart_tx_valid,
-    output logic [7:0]  uart_tx_data
+    output logic [7:0]  uart_tx_data,
+
+    input  logic        uart_rx_valid,
+    input  logic [7:0]  uart_rx_data,
+    output logic        uart_rx_ready
 );
 
     // ============================================================
@@ -46,6 +50,11 @@ module rv32_soc #(
 
     localparam logic [31:0] UART_TX  = 32'h2000_0000;
 
+    localparam logic [31:0] UART_RX_BEGIN = 32'h2000_0004;
+
+    localparam logic [31:0] UART_RX_END   = 32'h2000_000f;
+
+
     localparam logic [31:0] TIMER_BASE = 32'h3000_0000;
 
     localparam logic [31:0] TIMER_END  = 32'h3000_000F;
@@ -58,6 +67,7 @@ module rv32_soc #(
     logic ram_sel;
     logic uart_sel;
     logic timer_sel;
+    logic console_rx_sel;
 
     // ============================================================
     // Peripheral read data
@@ -66,6 +76,7 @@ module rv32_soc #(
     logic [31:0] rom_rdata;
     logic [31:0] ram_rdata;
     logic [31:0] timer_rdata;
+    logic [31:0] console_rx_rdata;
 
     logic        timer_irq;
 
@@ -124,6 +135,9 @@ module rv32_soc #(
 
         timer_sel = (mem_addr >= TIMER_BASE) &&
                     (mem_addr <= TIMER_END);
+
+        console_rx_sel = (mem_addr >= UART_RX_BEGIN) &&
+                         (mem_addr <= UART_RX_END);
 
     end
 
@@ -199,6 +213,25 @@ module rv32_soc #(
         .tx_data  (uart_tx_data)
     );
 
+    // ============================================================
+    // CONSOLE RX MMIO
+    // ============================================================
+
+    console_rx u_console_rx (
+        .clk      (clk),
+        .rst      (rst),
+
+        .addr     (mem_addr - UART_TX),
+        .we       (mem_we && console_rx_sel),
+        .wstrb    (mem_wstrb),
+        .wdata    (mem_wdata),
+        .rdata    (console_rx_rdata),
+
+        .rx_valid (uart_rx_valid),
+        .rx_data  (uart_rx_data),
+        .rx_ready (uart_rx_ready)
+    );
+
 
     // ============================================================
     // CPU data read mux
@@ -214,6 +247,9 @@ module rv32_soc #(
 
         else if (timer_sel)
             mem_rdata = timer_rdata;
+
+        else if (console_rx_sel)
+            mem_rdata = console_rx_rdata;
 
         else
             mem_rdata = 32'b0;

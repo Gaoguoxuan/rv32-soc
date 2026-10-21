@@ -25,6 +25,7 @@ RTL := \
 SOC_RTL := \
     rtl/soc/simple_ram.sv \
     rtl/soc/uart_mmio.sv \
+    rtl/soc/console_rx.sv \
     rtl/soc/simple_rom.sv \
     rtl/soc/timer_mmio.sv \
     rtl/soc/rv32_soc.sv
@@ -143,6 +144,54 @@ console-rx-test: $(CONSOLE_RX_SIM)
 console-rx-lint:
 >$(VERILATOR) --lint-only -Wall -Wno-UNUSEDSIGNAL \
 >    --top-module console_rx rtl/soc/console_rx.sv
+
+# ============================================================
+# CPU console RX polling and echo (O0 / O2)
+# ============================================================
+
+SOC_CONSOLE_RX_DIR := build/soc_console_rx
+SOC_CONSOLE_RX_O2_DIR := build/soc_console_rx_o2
+SOC_CONSOLE_RX_DIRS := $(SOC_CONSOLE_RX_DIR) $(SOC_CONSOLE_RX_O2_DIR)
+SOC_CONSOLE_RX_ELFS := $(addsuffix /soc_console_rx.elf,$(SOC_CONSOLE_RX_DIRS))
+SOC_CONSOLE_RX_HEXS := $(SOC_CONSOLE_RX_ELFS:.elf=.hex)
+SOC_CONSOLE_RX_DUMPS := $(SOC_CONSOLE_RX_ELFS:.elf=.dump)
+SOC_CONSOLE_RX_SIM := build/obj_soc_console_rx/Vtb_soc_console_rx
+SOC_CONSOLE_RX_FLAGS := $(filter-out -O0,$(UART_CFLAGS)) -Wall -Wextra -Werror
+
+$(SOC_CONSOLE_RX_DIR)/soc_console_rx.elf: sw/console_rx/main.c sw/uart/start.S sw/uart/link.ld
+>mkdir -p $(@D)
+>$(RISCV_GCC) $(SOC_CONSOLE_RX_FLAGS) -O0 \
+>    -Wl,-T,sw/uart/link.ld -Wl,--no-relax -Wl,-Map,$(@:.elf=.map) \
+>    -o $@ sw/uart/start.S sw/console_rx/main.c
+
+$(SOC_CONSOLE_RX_O2_DIR)/soc_console_rx.elf: sw/console_rx/main.c sw/uart/start.S sw/uart/link.ld
+>mkdir -p $(@D)
+>$(RISCV_GCC) $(SOC_CONSOLE_RX_FLAGS) -O2 \
+>    -Wl,-T,sw/uart/link.ld -Wl,--no-relax -Wl,-Map,$(@:.elf=.map) \
+>    -o $@ sw/uart/start.S sw/console_rx/main.c
+
+$(SOC_CONSOLE_RX_ELFS:.elf=.bin): %.bin: %.elf
+>$(RISCV_OBJCOPY) -O binary $< $@
+
+$(SOC_CONSOLE_RX_HEXS): %.hex: %.bin scripts/bin2hex.py
+>python3 scripts/bin2hex.py $< $@
+
+$(SOC_CONSOLE_RX_DUMPS): %.dump: %.elf
+>$(RISCV_OBJDUMP) -d -M no-aliases $< > $@
+
+$(SOC_CONSOLE_RX_SIM): $(RTL) $(SOC_RTL) tb/tb_soc_console_rx.sv
+>mkdir -p $(@D)
+>$(VERILATOR) --binary --timing -Wall -Wno-fatal \
+>    -Werror-PINMISSING -Werror-IMPLICIT -Werror-UNDRIVEN \
+>    --Mdir build/obj_soc_console_rx --top-module tb_soc_console_rx \
+>    $(RTL) $(SOC_RTL) tb/tb_soc_console_rx.sv
+
+.PHONY: soc-console-rx-test
+
+soc-console-rx-test: $(SOC_CONSOLE_RX_HEXS) $(SOC_CONSOLE_RX_DUMPS) $(SOC_CONSOLE_RX_SIM)
+>./$(SOC_CONSOLE_RX_SIM) +image=$(SOC_CONSOLE_RX_DIR)/soc_console_rx.hex
+>./$(SOC_CONSOLE_RX_SIM) +image=$(SOC_CONSOLE_RX_O2_DIR)/soc_console_rx.hex
+>@echo "SOC CONSOLE RX O0/O2 CHECKS PASS"
 
 # ============================================================
 # Zicsr assembly test
