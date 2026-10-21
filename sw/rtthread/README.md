@@ -20,7 +20,7 @@ RT-Thread v4.1.1 移植。内核源码在 ../../third_party/rt-thread/，来源�
 - mutex_test.c：M11.7 互斥锁测试，检查递归持锁、优先级继承和释放后的调度顺序。
 - demo.c：M11.8 持续运行的生产者、消费者和心跳线程。
 - input_test.c：接收线程等待和读取字符，低优先级心跳线程继续运行。
-- shell_main.c：启动 msh 和后台计数线程，注册 hello、ticks、stats、pause、resume 命令。
+- shell_main.c：启动 msh 和后台计数线程，注册 hello、ticks、stats、pause、resume、period 命令。
 - shell.ld：shell 的链接脚本，保留 FSymTab 命令表。
 - finsh_compat/：shell 使用的少量 C 库接口，字符串操作使用 rt_* 函数。
 - link.ld / start_test.ld / sched_test.ld：各固件均使用 64 KiB ROM/RAM；调度及之后的测试和演示共用 sched_test.ld。
@@ -95,8 +95,8 @@ make rtthread-shell
 ps 显示 tshell、worker 和 tidle0 三个线程；多次执行 ticks 可以看到系统 tick 增长。
 退格、Tab 补全和方向键历史记录均可使用。按 Ctrl-C 退出并恢复终端设置。
 
-worker 的优先级是 21，运行时每轮延时 10 tick，再根据开关决定是否增加计数。
-stats 输出 tick、running 和 count。pause 暂停计数，resume 恢复计数。
+worker 的优先级是 21，运行时每轮按设定间隔延时，再根据开关决定是否增加计数。
+stats 输出 tick、running、count 和 period。pause 暂停计数，resume 恢复计数。
 暂停时若已有延时，先等这次延时结束，随后无限期等待 wakeup 信号量；
 系统 tick 继续增长，count 保持不变。此时 list_sem 显示 worker 在等待队列中，
 list_timer 显示 worker 的定时器为 deactivated。
@@ -105,6 +105,12 @@ worker 在准备等待时设置 worker_waiting；resume 清除这个标记，并
 重复 pause 或 resume 不会重置计数、创建新线程或积累通知。
 开关判断和加一放在同一个临界区，stats 也在临界区内取得数据快照。
 打印发生在恢复中断之后，后台线程不打印。
+
+period 查询当前延时间隔，period 50 将后续循环的间隔设为 50 tick。
+默认间隔为 10 tick，只接受 1～1000 的十进制整数，可带前导零。
+参数为空字符串、含非数字、超出范围或参数过多时显示用法，保留原来的间隔。
+解析时每读入一位就检查范围，因此很长的数字也不会发生整数溢出。
+修改间隔不改变正在进行的延时，也不清零计数；暂停期间修改不会唤醒 worker。
 
 make rtthread-shell-build 只构建，-O2 固件在 build/rtthread_shell_o2/。
 主机程序 sim/rtthread_shell.cpp 只将键盘字节送入 RX MMIO，并显示 UART TX 输出。
@@ -116,6 +122,8 @@ ps、version、ticks、未知命令、编辑、历史记录和退出后的终端
 还检查后台计数增长、暂停期间计数保持不变、信号量等待队列、
 worker 定时器停用且超时值不再更新、恢复计数、重复和连续控制时不积累通知，
 以及 worker 的线程数量和栈大小。
+period 测试覆盖查询、上下界、前导零、非法参数和长数字、暂停期间修改，
+以及修改时保留当前截止时间、后续循环采用新间隔。管道输入也检查参数命令。
 shell 的所有目标文件使用 RV32_SOC_SHELL 配置，单独存放在构建目录。
 链接脚本通过 KEEP(*(FSymTab)) 保留命令表，链接后仍检查 RV32I/Zicsr 指令。
 

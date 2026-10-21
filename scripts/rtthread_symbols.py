@@ -130,7 +130,7 @@ def main():
         names += ("worker_entry", "stats", "pause_work", "resume_work",
                   "worker_thread", "worker_stack", "worker_running", "work_count",
                   "worker_wakeup", "worker_waiting", "rt_sem_init", "rt_sem_take",
-                  "rt_sem_release")
+                  "rt_sem_release", "period", "worker_period")
         strong += ("rt_sem_init", "rt_sem_take", "rt_sem_release")
     else:
         raise SystemExit(f"Unknown RT-Thread test mode: {mode}")

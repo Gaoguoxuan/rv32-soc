@@ -61,9 +61,19 @@ def test_terminal(simulator, image):
 
     def read_stats():
         response = command(b"stats\n")
-        match = re.search(rb"tick=(\d+) running=([01]) count=(\d+)", response)
+        match = re.search(rb"tick=(\d+) running=([01]) count=(\d+) period=(\d+)", response)
         require(match, f"Missing worker statistics: {response!r}")
         return tuple(int(value) for value in match.groups())
+
+    def read_period(argument=None):
+        text = b"period" if argument is None else b"period " + argument
+        response = command(text + b"\n")
+        match = re.search(rb"(?m)^period=(\d+)$", response)
+        require(match, f"Missing period output: {response!r}")
+        return int(match[1])
+
+    def set_period(value):
+        require(read_period(str(value).encode()) == value, f"Cannot set period to {value}")
 
     def check_wakeup(waiters):
         response = command(b"list_sem\n")
@@ -84,26 +94,39 @@ def test_terminal(simulator, image):
         period, timeout, state = rows[0]
         return int(period, 16), int(timeout, 16), state
 
-    def wait_stats(before, running, frozen_count=None):
-        # Advance by guest ticks, so the check remains valid on slower hosts.
+    def wait_worker_timer(interval):
+        # resume makes the lower-priority worker ready; it need not run
+        # before the next shell command. Wait for its actual delay to start.
         deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            timer = read_worker_timer()
+            if timer[0] == interval and timer[2] == b"activated":
+                return timer
+            time.sleep(0.02)
+        raise AssertionError(f"Worker did not start a {interval}-tick delay: {timer}")
+
+    def wait_stats(before, running, frozen_count=None, ticks=40):
+        # Advance by guest ticks, so the check remains valid on slower hosts.
+        deadline = time.monotonic() + max(10, ticks / 20)
         while time.monotonic() < deadline:
             time.sleep(0.02)
             sample = read_stats()
             require(sample[1] == running, f"Wrong worker state: {sample}")
+            require(sample[3] == before[3], f"Period changed without a command: {before} -> {sample}")
             require(sample[2] >= before[2], f"Worker count went backwards: {before} -> {sample}")
             if frozen_count is not None:
                 require(sample[2] == frozen_count,
                         f"Count changed while paused: {frozen_count} -> {sample[2]}")
-            if sample[0] - before[0] >= 40:
+            if sample[0] - before[0] >= ticks:
                 return sample
-        raise AssertionError(f"Guest tick did not advance by 40 from {before}")
+        raise AssertionError(f"Guest tick did not advance by {ticks} from {before}")
 
     def check_growth(before, after):
         increment = after[2] - before[2]
-        # A relative 10-tick delay permits at most this many increments;
+        # A relative delay permits at most this many increments;
         # shell activity may postpone the worker's actual execution.
-        require(0 < increment <= (after[0] - before[0]) // 10 + 1,
+        require(before[3] == after[3] and
+                0 < increment <= (after[0] - before[0]) // before[3] + 1,
                 f"Wrong worker progress: {before} -> {after}")
 
     try:
@@ -113,7 +136,7 @@ def test_terminal(simulator, image):
                 "Terminal input was not configured for individual keys")
         help_output = command(b"help\n")
         for name in [b"hello", b"ticks", b"ps", b"version", b"stats", b"pause", b"resume",
-                     b"list_sem", b"list_timer"]:
+                     b"list_sem", b"list_timer", b"period"]:
             require(re.search(rb"(?m)^" + name + rb"\s+-", help_output),
                     f"Command absent from help: {name!r}")
         require(command(b"hello\n").count(GREETING) == 1, "hello failed")
@@ -130,6 +153,7 @@ def test_terminal(simulator, image):
 
         active_before = read_stats()
         require(active_before[1] == 1, f"Worker did not start enabled: {active_before}")
+        require(active_before[3] == 10 and read_period() == 10, "Wrong default worker period")
         active_after = wait_stats(active_before, running=1)
         check_growth(active_before, active_after)
 
@@ -189,6 +213,60 @@ def test_terminal(simulator, image):
               f"semaphore waiter, inactive timer, resumed {resumed[2]}->{resumed_after[2]}, "
               "repeated/buffered control, no leftover notifications")
 
+        require(b"worker paused\n" in command(b"pause\n"), "Parameter-test pause failed")
+        stopped = read_stats()
+        wait_stats(stopped, running=0, frozen_count=stopped[2])
+        check_wakeup(waiters=1)
+        stopped_timer = read_worker_timer()
+        for value in [1, 1000, 50, 50]:
+            set_period(value)
+            sample = read_stats()
+            require(sample[1:] == (0, stopped[2], value),
+                    f"Setting period changed paused worker state: {sample}")
+        require(read_period(b"00050") == 50, "Decimal period with leading zeros failed")
+
+        invalid_arguments = [b"0", b"0000", b"-1", b"+1", b"1001", b"abc",
+                             b"1x", b"0x10", b"1.5", b"42949672961", b"9" * 60,
+                             b'""', b"10 20"]
+        for argument in invalid_arguments:
+            response = command(b"period " + argument + b"\n")
+            require(b"usage: period [1..1000]\n" in response,
+                    f"Invalid period accepted: {argument!r}: {response!r}")
+            require(read_period() == 50, f"Invalid argument changed period: {argument!r}")
+            sample = read_stats()
+            require(sample[1:] == (0, stopped[2], 50),
+                    f"Invalid argument changed paused worker state: {argument!r}: {sample}")
+        check_wakeup(waiters=1)
+        require(read_worker_timer() == stopped_timer, "Period command woke the paused worker")
+
+        set_period(1)
+        require(b"worker resumed\n" in command(b"resume\n"), "Fast-period resume failed")
+        fast_before = read_stats()
+        require(fast_before[2] >= stopped[2], "Period command reset the count")
+        fast_after = wait_stats(fast_before, running=1)
+        check_growth(fast_before, fast_after)
+        require(read_worker_timer()[0] == 1, "Worker did not use the minimum period")
+
+        require(b"worker paused\n" in command(b"pause\n"), "Slow-period pause failed")
+        stopped = read_stats()
+        wait_stats(stopped, running=0, frozen_count=stopped[2])
+        check_wakeup(waiters=1)
+        set_period(1000)
+        require(b"worker resumed\n" in command(b"resume\n"), "Slow-period resume failed")
+        slow_timer = wait_worker_timer(1000)
+        set_period(20)
+        require(read_worker_timer() == slow_timer, "Period change altered an existing delay")
+        changed = read_stats()
+        require(changed[1:] == (1, stopped[2], 20), "Period change interrupted the delay")
+        changed_after = wait_stats(changed, running=1, ticks=1100)
+        check_growth(changed, changed_after)
+        require(read_worker_timer()[0] == 20, "Worker did not use the new period on later loops")
+        check_wakeup(waiters=0)
+        set_period(10)
+        print(f"[PASS] {image}: period query, 1/1000 boundaries, leading zeros, "
+              f"{len(invalid_arguments)} invalid arguments, paused state preserved, "
+              "existing deadline preserved, later loops use new period")
+
         require(b"command not found" in command(b"no_such_cmd\n"), "Unknown command was not rejected")
         require(command(b"hellx\x7fo\n").count(GREETING) == 1, "Backspace editing failed")
         # Completion and history redraw the prompt before Enter executes the
@@ -223,7 +301,8 @@ def test_terminal(simulator, image):
 
 
 def test_pipe(simulator, image):
-    commands = [b"hello", b"pause", b"stats", b"resume", b"stats", b"ps"]
+    commands = [b"hello", b"period", b"period 1", b"period 1000", b"pause",
+                b"period 20", b"stats", b"period 0", b"period", b"resume", b"stats", b"ps"]
     result = subprocess.run([simulator, f"+image={image}"], input=b"\n".join(commands) + b"\n",
                             capture_output=True, timeout=20)
     require(result.returncode == 0, f"Pipe run failed: {result.stderr!r}")
@@ -231,11 +310,16 @@ def test_pipe(simulator, image):
     require(b"tshell" in result.stdout and b"worker" in result.stdout and
             result.stdout.count(PROMPT) == len(commands) + 1,
             f"Pipe commands did not finish: {result.stdout!r}")
-    states = re.findall(rb"tick=\d+ running=([01]) count=(\d+)", result.stdout)
+    states = re.findall(rb"tick=\d+ running=([01]) count=(\d+) period=(\d+)", result.stdout)
     require(len(states) == 2 and states[0][0] == b"0" and states[1][0] == b"1",
             f"Pipe control commands failed: {result.stdout!r}")
     require(int(states[1][1]) >= int(states[0][1]), "Pipe resume reset the count")
-    print(f"[PASS] {image}: pipe input, buffered control commands and EOF exit")
+    require(states[0][2] == states[1][2] == b"20", "Pipe statistics lost the period")
+    periods = re.findall(rb"(?m)^period=(\d+)\r?$", result.stdout)
+    require(periods == [b"10", b"1", b"1000", b"20", b"20"] and
+            result.stdout.count(b"usage: period [1..1000]") == 1,
+            f"Pipe period commands failed: {result.stdout!r}")
+    print(f"[PASS] {image}: pipe input, buffered control/period commands and EOF exit")
 
 
 def main():

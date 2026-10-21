@@ -11,6 +11,7 @@ static rt_uint32_t worker_stack[512]
 static volatile rt_uint32_t worker_running = 1u;
 static volatile rt_uint32_t work_count;
 static volatile rt_uint32_t worker_waiting;
+static volatile rt_tick_t worker_period = 10u;
 
 static void worker_entry(void *parameter)
 {
@@ -20,6 +21,7 @@ static void worker_entry(void *parameter)
         rt_base_t level = rt_hw_interrupt_disable();
 
         rt_uint32_t running = worker_running;
+        rt_tick_t interval = worker_period;
 
         if (!running)
             worker_waiting = 1u;
@@ -31,7 +33,7 @@ static void worker_entry(void *parameter)
             continue;
         }
 
-        rt_thread_delay(10);
+        rt_thread_delay(interval);
 
         level = rt_hw_interrupt_disable();
 
@@ -42,6 +44,56 @@ static void worker_entry(void *parameter)
     }
 }
 
+static int parse_period(const char *text, rt_tick_t *result)
+{
+    rt_uint32_t value = 0u;
+
+    if (*text == '\0')
+        return -RT_EINVAL;
+
+    while (*text != '\0') {
+        if (*text < '0' || *text > '9')
+            return -RT_EINVAL;
+
+        value = value * 10u + (rt_uint32_t)(*text - '0');
+
+        if (value > 1000u)
+            return -RT_EINVAL;
+
+        text++;
+    }
+
+    if (value == 0u)
+        return -RT_EINVAL;
+
+    *result = value;
+    return RT_EOK;
+}
+
+static int period(int argc, char **argv)
+{
+    rt_tick_t value = 0u;
+
+    if (argc != 1 &&
+        (argc != 2 || parse_period(argv[1], &value) != RT_EOK)) {
+        rt_kprintf("usage: period [1..1000]\n");
+        return -RT_EINVAL;
+    }
+
+    rt_base_t level = rt_hw_interrupt_disable();
+
+    if (argc == 2)
+        worker_period = value;
+
+    value = worker_period;
+
+    rt_hw_interrupt_enable(level);
+
+    rt_kprintf("period=%u\n", value);
+    return 0;
+}
+MSH_CMD_EXPORT(period, show or set worker delay);
+
 static int stats(int argc, char **argv)
 {
     (void)argc;
@@ -49,14 +101,15 @@ static int stats(int argc, char **argv)
 
     rt_base_t level = rt_hw_interrupt_disable();
 
+    rt_tick_t interval = worker_period;
     rt_uint32_t running = worker_running;
     rt_uint32_t count = work_count;
     rt_tick_t tick = rt_tick_get();
 
     rt_hw_interrupt_enable(level);
 
-    rt_kprintf("tick=%u running=%u count=%u\n",
-               tick, running, count);
+    rt_kprintf("tick=%u running=%u count=%u period=%u\n",
+               tick, running, count, interval);
     return 0;
 }
 MSH_CMD_EXPORT(stats, show worker status);
