@@ -65,6 +65,25 @@ def test_terminal(simulator, image):
         require(match, f"Missing worker statistics: {response!r}")
         return tuple(int(value) for value in match.groups())
 
+    def check_wakeup(waiters):
+        response = command(b"list_sem\n")
+        rows = re.findall(rb"(?m)^wakeup\s+(\d+)\s+(\d+)(?::([^\n]*))?$", response)
+        require(len(rows) == 1, f"Missing or duplicate wakeup semaphore: {response!r}")
+        value, waiting, names = rows[0]
+        expected_names = [b"worker"] if waiters else []
+        actual_names = names.split(b"/") if names else []
+        require(int(value) == 0 and int(waiting) == waiters and
+                actual_names == expected_names,
+                f"Wrong wakeup value or wait queue: {rows[0]!r}")
+
+    def read_worker_timer():
+        response = command(b"list_timer\n")
+        rows = re.findall(rb"(?m)^worker\s+0x([0-9a-f]+)\s+0x([0-9a-f]+)\s+"
+                          rb"(activated|deactivated)\s+one shot\s*$", response)
+        require(len(rows) == 1, f"Missing or duplicate worker timer: {response!r}")
+        period, timeout, state = rows[0]
+        return int(period, 16), int(timeout, 16), state
+
     def wait_stats(before, running, frozen_count=None):
         # Advance by guest ticks, so the check remains valid on slower hosts.
         deadline = time.monotonic() + 10
@@ -93,7 +112,8 @@ def test_terminal(simulator, image):
         require(not termios.tcgetattr(slave)[3] & (termios.ICANON | termios.ECHO),
                 "Terminal input was not configured for individual keys")
         help_output = command(b"help\n")
-        for name in [b"hello", b"ticks", b"ps", b"version", b"stats", b"pause", b"resume"]:
+        for name in [b"hello", b"ticks", b"ps", b"version", b"stats", b"pause", b"resume",
+                     b"list_sem", b"list_timer"]:
             require(re.search(rb"(?m)^" + name + rb"\s+-", help_output),
                     f"Command absent from help: {name!r}")
         require(command(b"hello\n").count(GREETING) == 1, "hello failed")
@@ -118,6 +138,15 @@ def test_terminal(simulator, image):
         require(paused[1] == 0 and paused[2] >= active_after[2], "pause reset the count or failed")
         require(b"worker paused\n" in command(b"pause\n"), "Repeated pause failed")
         paused_after = wait_stats(paused, running=0, frozen_count=paused[2])
+        check_wakeup(waiters=1)
+        paused_timer = read_worker_timer()
+        require(paused_timer[2] == b"deactivated", "Paused worker still has an active timer")
+        require(re.search(rb"(?m)^worker\s+21\s+suspend\s+", command(b"ps\n")),
+                "Paused worker is not suspended")
+        require(b"worker paused\n" in command(b"pause\n"), "Blocked pause failed")
+        paused_later = wait_stats(paused_after, running=0, frozen_count=paused[2])
+        check_wakeup(waiters=1)
+        require(read_worker_timer() == paused_timer, "Paused worker restarted its delay timer")
 
         require(b"worker resumed\n" in command(b"resume\n"), "resume failed")
         resumed = read_stats()
@@ -125,6 +154,10 @@ def test_terminal(simulator, image):
         require(b"worker resumed\n" in command(b"resume\n"), "Repeated resume failed")
         resumed_after = wait_stats(resumed, running=1)
         check_growth(resumed, resumed_after)
+        check_wakeup(waiters=0)
+        for _ in range(8):
+            require(b"worker resumed\n" in command(b"resume\n"), "Running resume failed")
+        check_wakeup(waiters=0)
 
         # Repeated control must preserve one worker and the accumulated count.
         previous_count = resumed_after[2]
@@ -136,12 +169,25 @@ def test_terminal(simulator, image):
             restarted = read_stats()
             require(restarted[1] == 1 and restarted[2] >= stopped[2], "Rapid resume lost state")
             previous_count = restarted[2]
+        # Buffered transitions also exercise pauses that the worker has not yet
+        # observed. After settling, no unused notification may remain.
+        os.write(master, b"pause\nresume\n" * 16)
+        for _ in range(16):
+            require(b"worker paused\n" in read_prompt(), "Buffered pause failed")
+            require(b"worker resumed\n" in read_prompt(), "Buffered resume failed")
+        burst_before = read_stats()
+        require(burst_before[1] == 1 and burst_before[2] >= previous_count,
+                "Buffered control lost worker state")
+        burst_after = wait_stats(burst_before, running=1)
+        check_growth(burst_before, burst_after)
+        check_wakeup(waiters=0)
         processes = command(b"ps\n")
         require(len(re.findall(rb"(?m)^worker\s+21\s+", processes)) == 1,
                 "Control commands created duplicate workers")
         print(f"[PASS] {image}: worker count {active_before[2]}->{active_after[2]}, "
-              f"paused at {paused[2]} for {paused_after[0] - paused[0]} ticks, "
-              f"resumed {resumed[2]}->{resumed_after[2]}, repeated control")
+              f"paused at {paused[2]} for {paused_later[0] - paused[0]} ticks, "
+              f"semaphore waiter, inactive timer, resumed {resumed[2]}->{resumed_after[2]}, "
+              "repeated/buffered control, no leftover notifications")
 
         require(b"command not found" in command(b"no_such_cmd\n"), "Unknown command was not rejected")
         require(command(b"hellx\x7fo\n").count(GREETING) == 1, "Backspace editing failed")

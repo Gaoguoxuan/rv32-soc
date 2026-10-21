@@ -3,20 +3,37 @@
 #include <shell.h>
 
 static struct rt_thread worker_thread;
+static struct rt_semaphore worker_wakeup;
+
 static rt_uint32_t worker_stack[512]
     __attribute__((aligned(RT_ALIGN_SIZE)));
 
 static volatile rt_uint32_t worker_running = 1u;
 static volatile rt_uint32_t work_count;
+static volatile rt_uint32_t worker_waiting;
 
 static void worker_entry(void *parameter)
 {
     (void)parameter;
 
     while (1) {
+        rt_base_t level = rt_hw_interrupt_disable();
+
+        rt_uint32_t running = worker_running;
+
+        if (!running)
+            worker_waiting = 1u;
+
+        rt_hw_interrupt_enable(level);
+
+        if (!running) {
+            rt_sem_take(&worker_wakeup, RT_WAITING_FOREVER);
+            continue;
+        }
+
         rt_thread_delay(10);
 
-        rt_base_t level = rt_hw_interrupt_disable();
+        level = rt_hw_interrupt_disable();
 
         if (worker_running)
             work_count++;
@@ -64,8 +81,16 @@ static int resume_work(int argc, char **argv)
     (void)argv;
 
     rt_base_t level = rt_hw_interrupt_disable();
+
     worker_running = 1u;
+
+    rt_uint32_t notify = worker_waiting;
+    worker_waiting = 0u;
+
     rt_hw_interrupt_enable(level);
+
+    if (notify)
+        rt_sem_release(&worker_wakeup);
 
     rt_kprintf("worker resumed\n");
     return 0;
@@ -99,6 +124,13 @@ int main(void)
     rt_system_timer_init();
     rt_system_scheduler_init();
     rt_thread_idle_init();
+
+    if (rt_sem_init(&worker_wakeup, "wakeup",
+                    0, RT_IPC_FLAG_PRIO) != RT_EOK) {
+        rt_kprintf("worker semaphore init failed\n");
+        while (1) {
+        }
+    }
 
     if (rt_thread_init(&worker_thread, "worker",
                         worker_entry, RT_NULL,

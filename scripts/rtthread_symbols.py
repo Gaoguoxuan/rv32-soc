@@ -128,7 +128,10 @@ def main():
                  "rt_hw_context_switch_interrupt", "rt_hw_tick_init", "rt_hw_tick_rearm")
         strong = names[:6] + names[10:]
         names += ("worker_entry", "stats", "pause_work", "resume_work",
-                  "worker_thread", "worker_stack", "worker_running", "work_count")
+                  "worker_thread", "worker_stack", "worker_running", "work_count",
+                  "worker_wakeup", "worker_waiting", "rt_sem_init", "rt_sem_take",
+                  "rt_sem_release")
+        strong += ("rt_sem_init", "rt_sem_take", "rt_sem_release")
     else:
         raise SystemExit(f"Unknown RT-Thread test mode: {mode}")
     symbols = {}

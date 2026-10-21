@@ -95,10 +95,14 @@ make rtthread-shell
 ps 显示 tshell、worker 和 tidle0 三个线程；多次执行 ticks 可以看到系统 tick 增长。
 退格、Tab 补全和方向键历史记录均可使用。按 Ctrl-C 退出并恢复终端设置。
 
-worker 的优先级是 21，每轮延时 10 tick，再根据开关决定是否增加计数。
-stats 输出 tick、running 和 count。pause 暂停计数，resume 恢复计数；
-暂停期间线程仍定期唤醒，系统 tick 继续增长，count 保持不变。
-重复 pause 或 resume 不会重置计数或创建新线程。
+worker 的优先级是 21，运行时每轮延时 10 tick，再根据开关决定是否增加计数。
+stats 输出 tick、running 和 count。pause 暂停计数，resume 恢复计数。
+暂停时若已有延时，先等这次延时结束，随后无限期等待 wakeup 信号量；
+系统 tick 继续增长，count 保持不变。此时 list_sem 显示 worker 在等待队列中，
+list_timer 显示 worker 的定时器为 deactivated。
+worker 在准备等待时设置 worker_waiting；resume 清除这个标记，并只在需要时通知一次。
+即使通知先于 rt_sem_take 到达，信号量也会保留通知，避免漏掉唤醒。
+重复 pause 或 resume 不会重置计数、创建新线程或积累通知。
 开关判断和加一放在同一个临界区，stats 也在临界区内取得数据快照。
 打印发生在恢复中断之后，后台线程不打印。
 
@@ -109,8 +113,9 @@ make rtthread-shell-build 只构建，-O2 固件在 build/rtthread_shell_o2/。
 
 rtthread-shell-test 使用伪终端和管道分别运行两个优化版本，检查 help、hello、
 ps、version、ticks、未知命令、编辑、历史记录和退出后的终端恢复。
-还检查后台计数增长、暂停至少 40 tick 时计数保持不变、恢复计数、
-重复控制和 worker 的线程数量及栈大小。
+还检查后台计数增长、暂停期间计数保持不变、信号量等待队列、
+worker 定时器停用且超时值不再更新、恢复计数、重复和连续控制时不积累通知，
+以及 worker 的线程数量和栈大小。
 shell 的所有目标文件使用 RV32_SOC_SHELL 配置，单独存放在构建目录。
 链接脚本通过 KEEP(*(FSymTab)) 保留命令表，链接后仍检查 RV32I/Zicsr 指令。
 
